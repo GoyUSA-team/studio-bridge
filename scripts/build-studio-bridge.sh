@@ -25,21 +25,42 @@ printf 'sdk.dir=%s\n' "$SDK" > upstream-app/local.properties
 chmod +x upstream-app/gradlew
 (cd upstream-app && ./gradlew --no-daemon --max-workers=2 assembleDebug)
 mkdir -p dist
-cp upstream-app/app/build/outputs/apk/debug/app-debug.apk dist/StudioBridge-0.1-experimental.apk
-"$SDK/build-tools/34.0.0/apksigner" verify --verbose dist/StudioBridge-0.1-experimental.apk
+APK_OUT="dist/StudioBridge-0.2-experimental.apk"
+cp upstream-app/app/build/outputs/apk/debug/app-debug.apk "$APK_OUT"
+
+if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" ]]; then
+  echo "Signing APK with configured ANDROID_KEYSTORE_BASE64 secret..."
+  KS_FILE="$(mktemp /tmp/studiobridge-ks.XXXXXX.p12)"
+  trap 'rm -f "$KS_FILE"' EXIT
+  printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d ' \t\r\n' | base64 -d > "$KS_FILE"
+  KS_PASS="${ANDROID_KEYSTORE_PASSWORD:-studiobridge123}"
+  KEY_ALIAS="${ANDROID_KEY_ALIAS:-studiobridge}"
+  KEY_PASS="${ANDROID_KEY_PASSWORD:-$KS_PASS}"
+  "$SDK/build-tools/34.0.0/apksigner" sign \
+    --ks "$KS_FILE" \
+    --ks-type PKCS12 \
+    --ks-key-alias "$KEY_ALIAS" \
+    --ks-pass "pass:$KS_PASS" \
+    --key-pass "pass:$KEY_PASS" \
+    "$APK_OUT"
+  rm -f "$KS_FILE"
+fi
+
+"$SDK/build-tools/34.0.0/apksigner" verify --verbose "$APK_OUT"
 python3 - <<'PY'
 from pathlib import Path
 from zipfile import ZipFile,ZIP_DEFLATED
 import hashlib
 root=Path('upstream-app');dist=Path('dist')
+apk_name='StudioBridge-0.2-experimental.apk'
 with ZipFile(dist/'StudioBridge-APK-download.zip','w',ZIP_DEFLATED,compresslevel=1) as z:
- z.write(dist/'StudioBridge-0.1-experimental.apk','StudioBridge-0.1-experimental.apk')
+ z.write(dist/apk_name,apk_name)
  z.write(root/'README-STUDIO-BRIDGE.md','READ-FIRST.md')
 with ZipFile(dist/'StudioBridge-source.zip','w',ZIP_DEFLATED,compresslevel=6) as z:
  for p in root.rglob('*'):
   rel=p.relative_to(root)
   if any(part in {'.git','.gradle','.cxx','.idea','build'} for part in rel.parts):continue
-  if p.name=='local.properties' or p.suffix in {'.jks','.keystore'}:continue
+  if p.name=='local.properties' or p.suffix in {'.jks','.keystore','.p12'}:continue
   if p.is_file():z.write(p,'StudioBridge-source/'+str(rel))
 (dist/'SHA256SUMS.txt').write_text('\n'.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name for p in sorted(dist.iterdir()) if p.is_file())+'\n')
 PY

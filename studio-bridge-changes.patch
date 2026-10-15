@@ -118,15 +118,17 @@ index 0000000..8ad9011
 +
 +This is an experimental debug build for further investigation, not a finished or production-safe port. Read `README-STUDIO-BRIDGE.md` before installation. In particular, **do not uninstall an existing Winlator app or delete its data without a verified backup**.
 diff --git a/app/build.gradle b/app/build.gradle
-index 7690275..9bf6555 100644
+index 7690275..f8659cd 100644
 --- a/app/build.gradle
 +++ b/app/build.gradle
-@@ -9,12 +9,12 @@ android {
+@@ -8,13 +8,13 @@ android {
+         applicationId 'com.winlator'
          minSdkVersion 26
          targetSdkVersion 28
-         versionCode 33
+-        versionCode 33
 -        versionName "11.2"
-+        versionName "11.2-studiobridge-0.1"
++        versionCode 34
++        versionName "11.2-studiobridge-0.2"
      }
  
      buildTypes {
@@ -137,7 +139,7 @@ index 7690275..9bf6555 100644
  
              ndk {
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
-index 1262c0d..8fdcc3f 100644
+index 1262c0d..1a2c9f2 100644
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
 @@ -29,6 +29,12 @@
@@ -153,8 +155,48 @@ index 1262c0d..8fdcc3f 100644
              <intent-filter>
                  <action android:name="android.intent.action.MAIN"/>
                  <category android:name="android.intent.category.LAUNCHER"/>
+@@ -36,12 +42,20 @@
+         </activity>
+ 
+         <activity android:name="com.winlator.XServerDisplayActivity"
+-            android:exported="false"
++            android:exported="true"
+             android:theme="@style/AppThemeFullscreenDark"
+             android:supportsPictureInPicture="true"
+             android:launchMode="singleTask"
+             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|density|navigation"
+-            android:screenOrientation="sensorLandscape" />
++            android:screenOrientation="sensorLandscape">
++            <intent-filter>
++                <action android:name="android.intent.action.VIEW" />
++                <category android:name="android.intent.category.DEFAULT" />
++                <category android:name="android.intent.category.BROWSABLE" />
++                <data android:scheme="roblox-studio-auth" />
++                <data android:scheme="roblox-studio" />
++            </intent-filter>
++        </activity>
+ 
+         <activity android:name="com.winlator.ControlsEditorActivity"
+             android:exported="false"
+diff --git a/app/src/main/java/com/winlator/SettingsFragment.java b/app/src/main/java/com/winlator/SettingsFragment.java
+index 3bb2d01..5013711 100644
+--- a/app/src/main/java/com/winlator/SettingsFragment.java
++++ b/app/src/main/java/com/winlator/SettingsFragment.java
+@@ -146,10 +146,10 @@ public class SettingsFragment extends Fragment {
+         cbUseAndroidClipboardOnWine.setChecked(preferences.getBoolean("use_android_clipboard_on_wine", false));
+ 
+         final CheckBox cbEnableBackgroundWakelock = view.findViewById(R.id.CBEnableBackgroundWakelock);
+-        cbEnableBackgroundWakelock.setChecked(preferences.getBoolean("enable_background_wakelock", false));
++        cbEnableBackgroundWakelock.setChecked(preferences.getBoolean("enable_background_wakelock", true));
+ 
+         final CheckBox cbEnableBackgroundProtection = view.findViewById(R.id.CBEnableBackgroundProtection);
+-        cbEnableBackgroundProtection.setChecked(preferences.getBoolean("enable_background_protection", false));
++        cbEnableBackgroundProtection.setChecked(preferences.getBoolean("enable_background_protection", true));
+         cbEnableBackgroundProtection.setOnCheckedChangeListener((buttonView, isChecked) -> {
+             cbEnableBackgroundWakelock.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+             if (!isChecked) cbEnableBackgroundWakelock.setChecked(false);
 diff --git a/app/src/main/java/com/winlator/XServerDisplayActivity.java b/app/src/main/java/com/winlator/XServerDisplayActivity.java
-index 53fb456..d58423c 100644
+index 53fb456..da7595c 100644
 --- a/app/src/main/java/com/winlator/XServerDisplayActivity.java
 +++ b/app/src/main/java/com/winlator/XServerDisplayActivity.java
 @@ -129,6 +129,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
@@ -165,7 +207,53 @@ index 53fb456..d58423c 100644
      private float globalCursorSpeed = 1.0f;
      private boolean capturePointerOnExternalMouse = true;
      private MagnifierView magnifierView;
-@@ -321,6 +322,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -144,10 +145,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+         AppUtils.hideSystemUI(this);
+         AppUtils.keepScreenOn(this);
+         setContentView(R.layout.xserver_display_activity);
++        preferences = PreferenceManager.getDefaultSharedPreferences(this);
++        if (getIntent().getBooleanExtra("studio_bridge_session", false)
++                || !preferences.contains("enable_background_protection")
++                || !preferences.contains("enable_background_wakelock")) {
++            preferences.edit()
++                    .putBoolean("enable_background_protection", true)
++                    .putBoolean("enable_background_wakelock", true)
++                    .apply();
++        }
+         ForegroundService.startSession(this);
+ 
+         final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
+-        preferences = PreferenceManager.getDefaultSharedPreferences(this);
+         boolean useAndroidClipboardOnWine = preferences.getBoolean("use_android_clipboard_on_wine", false);
+         clipboardManager = useAndroidClipboardOnWine ? (ClipboardManager)getSystemService(CLIPBOARD_SERVICE) : null;
+ 
+@@ -166,6 +175,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+         rootFS = RootFS.find(this);
+ 
+         if (!isGenerateWineprefix()) {
++            com.winlator.studiobridge.StudioLoginBridge.prepareLaunchIntent(this, getIntent());
+             ContainerManager containerManager = new ContainerManager(this);
+             container = containerManager.getContainerById(getIntent().getIntExtra("container_id", 0));
+             containerManager.activateContainer(container);
+@@ -309,9 +319,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+         }
+     }
+ 
++    @Override
++    protected void onNewIntent(Intent intent) {
++        super.onNewIntent(intent);
++        setIntent(intent);
++        com.winlator.studiobridge.StudioLoginBridge.handleIncomingIntent(this, intent);
++    }
++
+     @Override
+     public void onResume() {
+         super.onResume();
++        com.winlator.studiobridge.StudioLoginBridge.onSessionResumed(this);
+         if (environment != null) {
+             xServerView.onResume();
+             environment.onResume();
+@@ -321,10 +339,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
  
      @Override
      public void onPause() {
@@ -173,7 +261,33 @@ index 53fb456..d58423c 100644
          ForegroundService.onPauseSession(this);
          super.onPause();
          if (environment != null && !isInPictureInPictureMode()) {
-@@ -619,6 +621,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+-            environment.onPause();
++            if (!com.winlator.studiobridge.StudioLoginBridge.shouldKeepAliveOnPause(this)) {
++                environment.onPause();
++            }
+             xServerView.onPause();
+         }
+     }
+@@ -337,6 +358,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+ 
+     @Override
+     protected void onDestroy() {
++        com.winlator.studiobridge.StudioLoginBridge.dismissActiveLoginDialog();
+         winHandler.stop();
+         if (environment != null) environment.stopEnvironmentComponents();
+         ForegroundService.stopSession(this);
+@@ -485,6 +507,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+             containerDataChanged = true;
+         }
+ 
++        if (getIntent().getBooleanExtra("studio_bridge_session", false)) {
++            com.winlator.studiobridge.StudioLoginBridge.configureWineRegistry(container);
++        }
++
+         if (containerDataChanged) container.saveData();
+     }
+ 
+@@ -619,6 +645,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
              }
          }
  
@@ -187,10 +301,117 @@ index 53fb456..d58423c 100644
 +            studioTouchBar = new com.winlator.studiobridge.StudioTouchBar(this, xServer);
 +            FrameLayout.LayoutParams barParams = new FrameLayout.LayoutParams(-1, height, android.view.Gravity.BOTTOM);
 +            rootView.addView(studioTouchBar, barParams);
++            com.winlator.studiobridge.StudioLoginBridge.handleIncomingIntent(this, getIntent());
 +        }
          if (MainActivity.DEBUG_MODE) rootView.addView(AppUtils.createDebugMsgTextView(this));
          AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
      }
+diff --git a/app/src/main/java/com/winlator/core/FileUtils.java b/app/src/main/java/com/winlator/core/FileUtils.java
+index b503fc0..b1b872b 100644
+--- a/app/src/main/java/com/winlator/core/FileUtils.java
++++ b/app/src/main/java/com/winlator/core/FileUtils.java
+@@ -414,7 +414,7 @@ public abstract class FileUtils {
+             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+         }
+         else intent = new Intent(Intent.ACTION_VIEW, Uri.parse(path));
+-        intent.addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT | Intent.FLAG_ACTIVITY_NEW_TASK);
++        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+         activity.startActivity(intent);
+     }
+ }
+diff --git a/app/src/main/java/com/winlator/core/ProcessHelper.java b/app/src/main/java/com/winlator/core/ProcessHelper.java
+index 4651b83..e2284b8 100644
+--- a/app/src/main/java/com/winlator/core/ProcessHelper.java
++++ b/app/src/main/java/com/winlator/core/ProcessHelper.java
+@@ -340,8 +340,7 @@ public abstract class ProcessHelper {
+                     result.add(pstat);
+                 }
+             }
+-            catch (Exception e) {
+-                return Collections.emptyList();
++            catch (Exception ignored) {
+             }
+         }
+ 
+diff --git a/app/src/main/java/com/winlator/services/ForegroundService.java b/app/src/main/java/com/winlator/services/ForegroundService.java
+index 0940581..32367be 100644
+--- a/app/src/main/java/com/winlator/services/ForegroundService.java
++++ b/app/src/main/java/com/winlator/services/ForegroundService.java
+@@ -64,7 +64,7 @@ public class ForegroundService extends Service {
+         if (ctx == null) return;
+         prefs = PreferenceManager.getDefaultSharedPreferences(ctx.getApplicationContext());
+         if (prefs != null) {
+-            if (!prefs.getBoolean("enable_background_protection", false)) {
++            if (!prefs.getBoolean("enable_background_protection", true)) {
+                 Log.i(TAG, "startSession called with background protection disabled; ignoring");
+                 return;
+             }
+@@ -88,6 +88,9 @@ public class ForegroundService extends Service {
+         }
+         isSessionInBackground = true;
+         Log.d(TAG, "onPauseSession");
++        if (instance != null) {
++            instance.acquireWakeLock();
++        }
+         updateForegroundState(ctx);
+     }
+ 
+@@ -158,6 +161,7 @@ public class ForegroundService extends Service {
+                 public void onStop(@NonNull androidx.lifecycle.LifecycleOwner owner) {
+                     isAppInBackground = true;
+                     Log.d(TAG, "App went to background (ProcessLifecycleOwner)");
++                    acquireWakeLock();
+                     updateForegroundState(ForegroundService.this);
+                 }
+             };
+@@ -237,7 +241,9 @@ public class ForegroundService extends Service {
+                 } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                     isScreenLocked = false;
+                     Log.d(TAG, "Device unlocked (user present)");
+-                    releaseWakeLock();
++                    if (!isSessionInBackground && !isAppInBackground) {
++                        releaseWakeLock();
++                    }
+                 } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                     // Screen on but keyguard may still be showing.
+                     KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+@@ -260,6 +266,9 @@ public class ForegroundService extends Service {
+         serviceStopping = false;
+         ensureForeground();
+         serviceRunning.set(true);
++        if (isSessionInBackground || isAppInBackground) {
++            acquireWakeLock();
++        }
+ 
+         if (!hasReason()) {
+             Log.d(TAG, "onStartCommand found no active reason; stopping immediately");
+@@ -268,7 +277,7 @@ public class ForegroundService extends Service {
+             stopSelf();
+             serviceRunning.set(false);
+         }
+-        return START_NOT_STICKY;
++        return START_STICKY;
+     }
+ 
+     private void ensureForeground() {
+@@ -299,6 +308,7 @@ public class ForegroundService extends Service {
+                 else {
+                     startForeground(notificationId, n);
+                 }
++                serviceRunning.set(true);
+             }
+             else {
+                 notificationUtils.notify(notificationId, n);
+@@ -383,8 +393,7 @@ public class ForegroundService extends Service {
+ 
+     private void acquireWakeLock() {
+         if (wakeLock == null) return;
+-        if (prefs == null) return;
+-        if (!prefs.getBoolean(PREF_USE_WAKELOCK, false)) return;
++        if (prefs != null && !prefs.getBoolean(PREF_USE_WAKELOCK, true)) return;
+         if (!wakeLock.isHeld()) {
+             wakeLock.acquire();
+             Log.d(TAG, "WakeLock acquired");
 diff --git a/app/src/main/java/com/winlator/studiobridge/DeploymentFiles.java b/app/src/main/java/com/winlator/studiobridge/DeploymentFiles.java
 new file mode 100644
 index 0000000..3783042
@@ -455,10 +676,10 @@ index 0000000..edcb1e9
 +}
 diff --git a/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java b/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java
 new file mode 100644
-index 0000000..4f2bafb
+index 0000000..aa17894
 --- /dev/null
 +++ b/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,161 @@
 +/* Studio Bridge additions, 2026. LGPL-2.1-or-later. */
 +package com.winlator.studiobridge;
 +
@@ -499,6 +720,11 @@ index 0000000..4f2bafb
 +
 +    @Override public void onCreate(Bundle state) {
 +        super.onCreate(state);getWindow().setStatusBarColor(0xff191919);getWindow().setNavigationBarColor(0xff191919);
++        android.content.SharedPreferences initPrefs=PreferenceManager.getDefaultSharedPreferences(this);
++        initPrefs.edit().putBoolean("enable_background_protection",true).putBoolean("enable_background_wakelock",true).apply();
++        if(android.os.Build.VERSION.SDK_INT>=33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=android.content.pm.PackageManager.PERMISSION_GRANTED){
++            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},1001);
++        }
 +        ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(0xff191919);
 +        column=new LinearLayout(this);column.setOrientation(LinearLayout.VERTICAL);column.setPadding(dp(20),dp(24),dp(20),dp(32));scroll.addView(column);setContentView(scroll);
 +        text("STUDIO BRIDGE · EXPERIMENTAL",14,0xff87b8f0,12);
@@ -564,6 +790,8 @@ index 0000000..4f2bafb
 +                if(!prefs.contains("cursor_scale"))edit.putFloat("cursor_scale",1.4f);
 +                if(!prefs.contains("cursor_speed"))edit.putFloat("cursor_speed",0.7f);
 +                if(!prefs.contains("move_cursor_to_touchpoint"))edit.putBoolean("move_cursor_to_touchpoint",false);
++                edit.putBoolean("enable_background_protection",true);
++                edit.putBoolean("enable_background_wakelock",true);
 +                edit.apply();status.setText("Dedicated container created. Download Studio next; compatibility is unverified.");
 +            });
 +        }catch(Exception e){end();message("Cannot create container",e.toString());}
@@ -596,6 +824,7 @@ index 0000000..4f2bafb
 +        try {
 +            File exe=StudioDeployment.currentExecutable(c.getRootDir());
 +            if(exe==null){message("Studio not installed","Complete the download step first.");return;}
++            StudioLoginBridge.configureWineRegistry(c);
 +            Intent intent=new Intent(this,XServerDisplayActivity.class);intent.putExtra("container_id",c.id);intent.putExtra("exec_path",exe.getAbsolutePath());intent.putExtra("studio_bridge_session",true);startActivity(intent);
 +        }catch(Exception e){message("Cannot launch",e.toString());}
 +    }
@@ -612,12 +841,588 @@ index 0000000..4f2bafb
 +    private void button(String label,Runnable action){Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(16);b.setMinHeight(dp(52));b.setOnClickListener(v->action.run());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(16);column.addView(b,lp);}
 +    private Spinner spinner(String[] options){Spinner s=new Spinner(this);s.setMinimumHeight(dp(52));s.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,options));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(56));lp.bottomMargin=dp(12);column.addView(s,lp);return s;}
 +}
+diff --git a/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java b/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java
+new file mode 100644
+index 0000000..23cb2c0
+--- /dev/null
++++ b/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java
+@@ -0,0 +1,570 @@
++/* Studio Bridge additions, 2026. Distributed under LGPL-2.1-or-later. */
++package com.winlator.studiobridge;
++
++import android.annotation.SuppressLint;
++import android.app.Dialog;
++import android.content.ClipData;
++import android.content.ClipboardManager;
++import android.content.Context;
++import android.content.Intent;
++import android.graphics.Color;
++import android.net.Uri;
++import android.os.SystemClock;
++import android.view.Gravity;
++import android.view.ViewGroup;
++import android.view.Window;
++import android.view.WindowManager;
++import android.webkit.CookieManager;
++import android.webkit.WebChromeClient;
++import android.webkit.WebResourceRequest;
++import android.webkit.WebSettings;
++import android.webkit.WebView;
++import android.webkit.WebViewClient;
++import android.widget.Button;
++import android.widget.EditText;
++import android.widget.LinearLayout;
++import android.widget.ProgressBar;
++import android.widget.TextView;
++import android.widget.Toast;
++
++import androidx.appcompat.app.AlertDialog;
++
++import com.winlator.XServerDisplayActivity;
++import com.winlator.container.Container;
++import com.winlator.container.ContainerManager;
++import com.winlator.core.WineRegistryEditor;
++import com.winlator.core.WineUtils;
++import com.winlator.winhandler.WinHandler;
++
++import java.io.File;
++import java.io.IOException;
++import java.net.URI;
++import java.util.Locale;
++
++/**
++ * Bridges Roblox Studio's OAuth browser login inside Winlator:
++ * 1. Intercepts Wine browser launch requests (RequestCodes.OPEN_URL) so Android does not
++ *    force split-screen Chrome (FLAG_ACTIVITY_LAUNCH_ADJACENT).
++ * 2. Provides an in-app WebView sign-in modal that intercepts roblox-studio-auth: and
++ *    roblox-studio: redirects directly inside the running Studio session.
++ * 3. Supports full-screen external browser fallback while keeping Wine guest processes
++ *    unpaused so Studio's PKCE OAuth state stays alive until the deep-link callback returns.
++ * 4. Delivers long OAuth callback URIs into the active Wine session via a short batch helper
++ *    (C:\StudioBridge\studio-auth.bat) to avoid WinHandler's 256-byte UDP packet limit.
++ */
++public final class StudioLoginBridge {
++    public static final String DEFAULT_AUTH_URL = "https://authorize.roblox.com/";
++    public static final String STUDIO_AUTH_BAT_DOS = "C:\\StudioBridge\\studio-auth.bat";
++    public static final String STUDIO_PROTOCOL_REG_DOS = "C:\\StudioBridge\\studio-protocol.reg";
++    private static final long EXTERNAL_AUTH_GRACE_MS = 10 * 60 * 1000L;
++
++    private static volatile long externalAuthStartedAt = 0L;
++    private static Dialog activeLoginDialog;
++    private static WebView activeWebView;
++    private static String lastAuthUrl = DEFAULT_AUTH_URL;
++    private static String lastCallbackUri;
++
++    private StudioLoginBridge() {}
++
++    public static boolean isStudioCallbackUri(String raw) {
++        if (raw == null) return false;
++        String trimmed = raw.trim().toLowerCase(Locale.ROOT);
++        if (trimmed.startsWith("roblox-studio-auth:") || trimmed.startsWith("roblox-studio:")) {
++            return true;
++        }
++        if (trimmed.startsWith("intent:")) {
++            return trimmed.contains("scheme=roblox-studio-auth") || trimmed.contains("scheme=roblox-studio");
++        }
++        return false;
++    }
++
++    public static String normalizeCallbackUri(String raw) throws IOException {
++        if (raw == null) throw new IOException("Empty callback URI");
++        String s = raw.trim();
++        if (s.isEmpty() || s.length() > 4096) throw new IOException("Invalid callback URI length");
++        for (int i = 0; i < s.length(); i++) {
++            char c = s.charAt(i);
++            if (c < 0x20 || c == 0x7f || c == '"' || c == '`') {
++                throw new IOException("Unsafe character in callback URI");
++            }
++        }
++        String lower = s.toLowerCase(Locale.ROOT);
++        if (lower.startsWith("intent:")) {
++            int marker = s.indexOf("#Intent;");
++            if (marker < 0) throw new IOException("Malformed intent callback URI");
++            String body = s.substring("intent:".length(), marker);
++            String tail = s.substring(marker + "#Intent;".length());
++            String scheme = null;
++            for (String part : tail.split(";")) {
++                if (part.startsWith("scheme=")) {
++                    scheme = part.substring("scheme=".length()).toLowerCase(Locale.ROOT);
++                    break;
++                }
++            }
++            if (!"roblox-studio-auth".equals(scheme) && !"roblox-studio".equals(scheme)) {
++                throw new IOException("Unsupported intent callback scheme");
++            }
++            while (body.startsWith("/")) body = body.substring(1);
++            s = scheme + ":/" + body;
++            lower = s.toLowerCase(Locale.ROOT);
++        }
++        if (lower.startsWith("roblox-studio-auth:")) {
++            return "roblox-studio-auth:" + s.substring("roblox-studio-auth:".length());
++        }
++        if (lower.startsWith("roblox-studio:")) {
++            return "roblox-studio:" + s.substring("roblox-studio:".length());
++        }
++        throw new IOException("Unsupported Studio callback scheme");
++    }
++
++    public static boolean isRobloxAuthUrl(String raw) {
++        if (raw == null) return false;
++        try {
++            URI u = new URI(raw.trim());
++            String scheme = u.getScheme();
++            String host = u.getHost();
++            if (scheme == null || host == null) return false;
++            String s = scheme.toLowerCase(Locale.ROOT);
++            String h = host.toLowerCase(Locale.ROOT);
++            if (!s.equals("https") && !s.equals("http")) return false;
++            return h.equals("roblox.com") || h.endsWith(".roblox.com");
++        } catch (Exception e) {
++            return false;
++        }
++    }
++
++    public static String escapeBatchArg(String callbackUri) throws IOException {
++        String normalized = normalizeCallbackUri(callbackUri);
++        return normalized.replace("%", "%%");
++    }
++
++    public static String extractDosDir(String dosExePath) throws IOException {
++        if (dosExePath == null || !dosExePath.matches("[A-Za-z]:\\\\[^\"\\r\\n]+\\\\RobloxStudioBeta\\.exe")) {
++            throw new IOException("Invalid Studio DOS executable path");
++        }
++        return dosExePath.substring(0, dosExePath.lastIndexOf('\\'));
++    }
++
++    public static String buildProtocolRegContent(String dosExePath, String version) throws IOException {
++        extractDosDir(dosExePath);
++        if (version == null || !version.matches("version-[a-fA-F0-9]{16}")) {
++            throw new IOException("Invalid Studio version string");
++        }
++        String escapedExe = dosExePath.replace("\\", "\\\\");
++        String openCommand = "\\\"" + escapedExe + "\\\" \\\"%1\\\"";
++        String iconValue = escapedExe + ",0";
++        return "Windows Registry Editor Version 5.00\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio]\r\n"
++                + "@=\"URL: Roblox Protocol\"\r\n"
++                + "\"URL Protocol\"=\"\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio\\DefaultIcon]\r\n"
++                + "@=\"" + iconValue + "\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio\\shell\\open\\command]\r\n"
++                + "@=\"" + openCommand + "\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio-auth]\r\n"
++                + "@=\"URL: Roblox Studio Auth Protocol\"\r\n"
++                + "\"URL Protocol\"=\"\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio-auth\\DefaultIcon]\r\n"
++                + "@=\"" + iconValue + "\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio-auth\\shell\\open\\command]\r\n"
++                + "@=\"" + openCommand + "\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\ROBLOX Corporation\\Environments\\RobloxStudio]\r\n"
++                + "\"version\"=\"" + version + "\"\r\n"
++                + "\"clientExePath\"=\"" + escapedExe + "\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\ROBLOX Corporation\\Environments\\RobloxStudio\\Channel]\r\n"
++                + "\"www.roblox.com\"=\"LIVE\"\r\n\r\n"
++                + "[HKEY_CURRENT_USER\\Software\\Wine\\WineBrowser]\r\n"
++                + "\"Browsers\"=\"C:\\\\windows\\\\winhandler.exe /url\"\r\n";
++    }
++
++    public static String buildAuthBatchScript(String dosExePath, String callbackUri) throws IOException {
++        String dosDir = extractDosDir(dosExePath);
++        String escapedUri = escapeBatchArg(callbackUri);
++        return "@echo off\r\n"
++                + "C:\\windows\\regedit.exe /s " + STUDIO_PROTOCOL_REG_DOS + "\r\n"
++                + "cd /d \"" + dosDir + "\"\r\n"
++                + "start \"\" \"" + dosExePath + "\" \"" + escapedUri + "\"\r\n";
++    }
++
++    public static File writeAuthArtifacts(File containerRoot, String dosExePath, String version, String callbackUri) throws IOException {
++        File base = StudioDeployment.base(containerRoot);
++        DeploymentFiles.mkdir(base);
++        File regFile = new File(base, "studio-protocol.reg");
++        DeploymentFiles.write(regFile, buildProtocolRegContent(dosExePath, version));
++        File batFile = new File(base, "studio-auth.bat");
++        DeploymentFiles.write(batFile, buildAuthBatchScript(dosExePath, callbackUri));
++        return batFile;
++    }
++
++    public static void configureWineRegistry(Container container) {
++        if (container == null) return;
++        try {
++            File rootDir = container.getRootDir();
++            File exe = StudioDeployment.currentExecutable(rootDir);
++            if (exe == null) return;
++            File marker = new File(StudioDeployment.base(rootDir), "current-version.txt");
++            if (!marker.isFile()) return;
++            String version = DeploymentFiles.read(marker).trim();
++            String dosExePath = WineUtils.unixToDOSPath(exe.getAbsolutePath(), container);
++            File base = StudioDeployment.base(rootDir);
++            DeploymentFiles.mkdir(base);
++            DeploymentFiles.write(new File(base, "studio-protocol.reg"), buildProtocolRegContent(dosExePath, version));
++
++            String command = "\"" + dosExePath + "\" \"%1\"";
++            String icon = dosExePath + ",0";
++            for (String regName : new String[]{".wine/user.reg", ".wine/system.reg"}) {
++                File regFile = new File(rootDir, regName);
++                try (WineRegistryEditor editor = new WineRegistryEditor(regFile)) {
++                    editor.setStringValue("Software\\Classes\\roblox-studio", null, "URL: Roblox Protocol");
++                    editor.setStringValue("Software\\Classes\\roblox-studio", "URL Protocol", "");
++                    editor.setStringValue("Software\\Classes\\roblox-studio\\DefaultIcon", null, icon);
++                    editor.setStringValue("Software\\Classes\\roblox-studio\\shell\\open\\command", null, command);
++
++                    editor.setStringValue("Software\\Classes\\roblox-studio-auth", null, "URL: Roblox Studio Auth Protocol");
++                    editor.setStringValue("Software\\Classes\\roblox-studio-auth", "URL Protocol", "");
++                    editor.setStringValue("Software\\Classes\\roblox-studio-auth\\DefaultIcon", null, icon);
++                    editor.setStringValue("Software\\Classes\\roblox-studio-auth\\shell\\open\\command", null, command);
++
++                    editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio", "version", version);
++                    editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio", "clientExePath", dosExePath);
++                    editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio\\Channel", "www.roblox.com", "LIVE");
++                    editor.setStringValue("Software\\Wine\\WineBrowser", "Browsers", "C:\\windows\\winhandler.exe /url");
++                }
++            }
++        } catch (Exception ignored) {}
++    }
++
++    public static void markAwaitingExternalAuth() {
++        externalAuthStartedAt = SystemClock.elapsedRealtime();
++    }
++
++    public static void onSessionResumed(XServerDisplayActivity activity) {
++        externalAuthStartedAt = 0L;
++    }
++
++    public static boolean shouldKeepAliveOnPause(XServerDisplayActivity activity) {
++        if (activity == null) return true;
++        boolean isStudio = activity.getIntent() != null
++                && activity.getIntent().getBooleanExtra("studio_bridge_session", false);
++        if (isStudio) return true;
++        long started = externalAuthStartedAt;
++        if (started > 0L && (SystemClock.elapsedRealtime() - started) < EXTERNAL_AUTH_GRACE_MS) {
++            return true;
++        }
++        android.content.SharedPreferences prefs = activity.getPreferences();
++        return prefs == null || prefs.getBoolean("enable_background_protection", true);
++    }
++
++    public static void prepareLaunchIntent(Context context, Intent intent) {
++        if (context == null || intent == null) return;
++        String data = intent.getDataString();
++        if (!isStudioCallbackUri(data)) return;
++        intent.putExtra("studio_auth_uri", data);
++        intent.putExtra("studio_bridge_session", true);
++        if (!intent.hasExtra("container_id")) {
++            ContainerManager manager = new ContainerManager(context);
++            for (Container c : manager.getContainers()) {
++                if ("1".equals(c.getExtra("studioBridge", "0"))) {
++                    intent.putExtra("container_id", c.id);
++                    try {
++                        File exe = StudioDeployment.currentExecutable(c.getRootDir());
++                        if (exe != null) intent.putExtra("exec_path", exe.getAbsolutePath());
++                    } catch (IOException ignored) {}
++                    break;
++                }
++            }
++        }
++    }
++
++    public static void handleIncomingIntent(XServerDisplayActivity activity, Intent intent) {
++        if (activity == null || intent == null) return;
++        String rawUri = intent.getStringExtra("studio_auth_uri");
++        if (rawUri == null || rawUri.isEmpty()) {
++            rawUri = intent.getDataString();
++        }
++        if (isStudioCallbackUri(rawUri)) {
++            intent.removeExtra("studio_auth_uri");
++            intent.setData(null);
++            deliverAuthCallback(activity, rawUri);
++        }
++    }
++
++    public static boolean handleOpenUrl(XServerDisplayActivity activity, String rawUrl) {
++        if (activity == null || rawUrl == null) return false;
++        final String url = rawUrl.trim();
++        if (url.isEmpty()) return false;
++
++        if (isStudioCallbackUri(url)) {
++            activity.runOnUiThread(() -> deliverAuthCallback(activity, url));
++            return true;
++        }
++
++        boolean isStudioSession = activity.getIntent() != null
++                && activity.getIntent().getBooleanExtra("studio_bridge_session", false);
++        if (!isStudioSession && !isRobloxAuthUrl(url)) {
++            return false;
++        }
++
++        lastAuthUrl = url;
++        activity.runOnUiThread(() -> showInAppLoginDialog(activity, url));
++        return true;
++    }
++
++    public static void deliverAuthCallback(XServerDisplayActivity activity, String rawUri) {
++        if (activity == null || activity.isDestroyed()) return;
++        try {
++            String normalized = normalizeCallbackUri(rawUri);
++            lastCallbackUri = normalized;
++            externalAuthStartedAt = 0L;
++            dismissActiveLoginDialog();
++
++            Container container = activity.getContainer();
++            if (container == null) {
++                Toast.makeText(activity, "Studio container not active yet.", Toast.LENGTH_LONG).show();
++                return;
++            }
++            File rootDir = container.getRootDir();
++            File exe = StudioDeployment.currentExecutable(rootDir);
++            if (exe == null) {
++                Toast.makeText(activity, "Studio executable not found in container.", Toast.LENGTH_LONG).show();
++                return;
++            }
++            File marker = new File(StudioDeployment.base(rootDir), "current-version.txt");
++            String version = marker.isFile() ? DeploymentFiles.read(marker).trim() : "";
++            String dosExePath = WineUtils.unixToDOSPath(exe.getAbsolutePath(), container);
++
++            writeAuthArtifacts(rootDir, dosExePath, version, normalized);
++
++            WinHandler winHandler = activity.getWinHandler();
++            if (winHandler != null) {
++                winHandler.exec("C:\\windows\\system32\\cmd.exe", "/c " + STUDIO_AUTH_BAT_DOS);
++                winHandler.bringToFront("RobloxStudioBeta.exe");
++                Toast.makeText(activity, "Sending login callback to Roblox Studio…", Toast.LENGTH_SHORT).show();
++            }
++        } catch (Exception e) {
++            Toast.makeText(activity, "Login callback error: " + e.getMessage(), Toast.LENGTH_LONG).show();
++        }
++    }
++
++    public static void openExternalBrowser(XServerDisplayActivity activity, String url) {
++        if (activity == null || url == null || url.isEmpty()) return;
++        try {
++            markAwaitingExternalAuth();
++            dismissActiveLoginDialog();
++            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
++            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++            activity.startActivity(intent);
++            Toast.makeText(activity, "Complete login in browser; you will be returned to Studio.", Toast.LENGTH_LONG).show();
++        } catch (Exception e) {
++            Toast.makeText(activity, "Cannot open browser: " + e.getMessage(), Toast.LENGTH_LONG).show();
++        }
++    }
++
++    public static void showLoginBridgeMenu(XServerDisplayActivity activity) {
++        if (activity == null || activity.isDestroyed()) return;
++        String[] items = new String[]{
++                "Open in-app Roblox login (" + (lastAuthUrl != null ? "current URL" : "authorize.roblox.com") + ")",
++                "Open login in external browser (full screen, no split)",
++                "Complete login from clipboard (roblox-studio-auth://)",
++                "Paste roblox-studio-auth:// callback manually",
++                "Re-send last captured login callback to Studio"
++        };
++        new AlertDialog.Builder(activity)
++                .setTitle("Studio Login Bridge")
++                .setItems(items, (d, which) -> {
++                    if (which == 0) {
++                        showInAppLoginDialog(activity, lastAuthUrl != null ? lastAuthUrl : DEFAULT_AUTH_URL);
++                    } else if (which == 1) {
++                        openExternalBrowser(activity, lastAuthUrl != null ? lastAuthUrl : DEFAULT_AUTH_URL);
++                    } else if (which == 2) {
++                        completeFromClipboard(activity);
++                    } else if (which == 3) {
++                        promptManualCallback(activity);
++                    } else if (which == 4) {
++                        if (lastCallbackUri != null) {
++                            deliverAuthCallback(activity, lastCallbackUri);
++                        } else {
++                            Toast.makeText(activity, "No login callback captured yet.", Toast.LENGTH_SHORT).show();
++                        }
++                    }
++                })
++                .setNegativeButton("Close", null)
++                .show();
++    }
++
++    private static void completeFromClipboard(XServerDisplayActivity activity) {
++        ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
++        if (cm != null && cm.hasPrimaryClip()) {
++            ClipData clip = cm.getPrimaryClip();
++            if (clip != null && clip.getItemCount() > 0 && clip.getItemAt(0).getText() != null) {
++                String text = clip.getItemAt(0).getText().toString().trim();
++                if (isStudioCallbackUri(text)) {
++                    deliverAuthCallback(activity, text);
++                    return;
++                }
++            }
++        }
++        Toast.makeText(activity, "Clipboard does not contain a roblox-studio-auth: link.", Toast.LENGTH_LONG).show();
++    }
++
++    private static void promptManualCallback(XServerDisplayActivity activity) {
++        final EditText input = new EditText(activity);
++        input.setSingleLine(true);
++        input.setHint("roblox-studio-auth:/?code=...");
++        new AlertDialog.Builder(activity)
++                .setTitle("Paste Studio Auth Callback URI")
++                .setView(input)
++                .setNegativeButton("Cancel", null)
++                .setPositiveButton("Complete Login", (d, w) -> {
++                    String value = input.getText() != null ? input.getText().toString().trim() : "";
++                    deliverAuthCallback(activity, value);
++                })
++                .show();
++    }
++
++    @SuppressLint("SetJavaScriptEnabled")
++    public static void showInAppLoginDialog(XServerDisplayActivity activity, String startUrl) {
++        if (activity == null || activity.isDestroyed()) return;
++        dismissActiveLoginDialog();
++
++        final Dialog dialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
++        LinearLayout root = new LinearLayout(activity);
++        root.setOrientation(LinearLayout.VERTICAL);
++        root.setBackgroundColor(0xff18181b);
++
++        LinearLayout header = new LinearLayout(activity);
++        header.setOrientation(LinearLayout.HORIZONTAL);
++        header.setGravity(Gravity.CENTER_VERTICAL);
++        header.setBackgroundColor(0xff242429);
++        int pad = dp(activity, 8);
++        header.setPadding(pad, dp(activity, 4), pad, dp(activity, 4));
++
++        TextView title = new TextView(activity);
++        title.setText("Studio Sign-In (In-App Bridge)");
++        title.setTextColor(Color.WHITE);
++        title.setTextSize(14);
++        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
++        header.addView(title, titleLp);
++
++        final ProgressBar progress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
++        progress.setMax(100);
++
++        final WebView webView = new WebView(activity);
++        activeWebView = webView;
++
++        Button browserBtn = headerButton(activity, "External Browser", () -> {
++            String current = webView.getUrl();
++            openExternalBrowser(activity, (current != null && current.startsWith("http")) ? current : startUrl);
++        });
++        header.addView(browserBtn);
++
++        Button pasteBtn = headerButton(activity, "Paste URI", () -> completeFromClipboard(activity));
++        header.addView(pasteBtn);
++
++        Button closeBtn = headerButton(activity, "Close", StudioLoginBridge::dismissActiveLoginDialog);
++        header.addView(closeBtn);
++
++        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
++        root.addView(progress, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 3)));
++
++        WebSettings settings = webView.getSettings();
++        settings.setJavaScriptEnabled(true);
++        settings.setDomStorageEnabled(true);
++        settings.setDatabaseEnabled(true);
++        settings.setJavaScriptCanOpenWindowsAutomatically(true);
++        settings.setSupportMultipleWindows(false);
++        settings.setLoadWithOverviewMode(true);
++        settings.setUseWideViewPort(true);
++        String defaultUa = settings.getUserAgentString();
++        if (defaultUa != null) {
++            settings.setUserAgentString(defaultUa.replace("; wv", "").replace("Version/4.0 ", ""));
++        }
++
++        CookieManager cookieManager = CookieManager.getInstance();
++        cookieManager.setAcceptCookie(true);
++        cookieManager.setAcceptThirdPartyCookies(webView, true);
++
++        webView.setWebChromeClient(new WebChromeClient() {
++            @Override
++            public void onProgressChanged(WebView view, int newProgress) {
++                progress.setProgress(newProgress);
++                progress.setVisibility(newProgress >= 100 ? android.view.View.GONE : android.view.View.VISIBLE);
++            }
++        });
++
++        webView.setWebViewClient(new WebViewClient() {
++            private boolean intercept(String url) {
++                if (url == null) return false;
++                if (isStudioCallbackUri(url)) {
++                    CookieManager.getInstance().flush();
++                    deliverAuthCallback(activity, url);
++                    return true;
++                }
++                if (url.startsWith("http://") || url.startsWith("https://")) {
++                    lastAuthUrl = url;
++                    return false;
++                }
++                return true;
++            }
++
++            @Override
++            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
++                Uri u = request != null ? request.getUrl() : null;
++                return u != null && intercept(u.toString());
++            }
++
++            @Override
++            @SuppressWarnings("deprecation")
++            public boolean shouldOverrideUrlLoading(WebView view, String url) {
++                return intercept(url);
++            }
++        });
++
++        root.addView(webView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
++        dialog.setContentView(root);
++        Window window = dialog.getWindow();
++        if (window != null) {
++            window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
++        }
++        dialog.setOnDismissListener(d -> {
++            if (activeWebView == webView) {
++                activeWebView.stopLoading();
++                activeWebView.destroy();
++                activeWebView = null;
++            }
++            if (activeLoginDialog == dialog) {
++                activeLoginDialog = null;
++            }
++        });
++
++        activeLoginDialog = dialog;
++        dialog.show();
++        webView.loadUrl(startUrl);
++    }
++
++    public static void dismissActiveLoginDialog() {
++        Dialog d = activeLoginDialog;
++        activeLoginDialog = null;
++        if (d != null && d.isShowing()) {
++            try {
++                d.dismiss();
++            } catch (Exception ignored) {}
++        }
++    }
++
++    private static Button headerButton(Context context, String label, Runnable action) {
++        Button b = new Button(context);
++        b.setText(label);
++        b.setAllCaps(false);
++        b.setTextSize(12);
++        b.setOnClickListener(v -> action.run());
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(context, 40));
++        lp.leftMargin = dp(context, 6);
++        b.setLayoutParams(lp);
++        return b;
++    }
++
++    private static int dp(Context context, int value) {
++        return Math.round(value * context.getResources().getDisplayMetrics().density);
++    }
++}
 diff --git a/app/src/main/java/com/winlator/studiobridge/StudioTouchBar.java b/app/src/main/java/com/winlator/studiobridge/StudioTouchBar.java
 new file mode 100644
-index 0000000..45efd0a
+index 0000000..3321ac5
 --- /dev/null
 +++ b/app/src/main/java/com/winlator/studiobridge/StudioTouchBar.java
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,51 @@
 +/* Studio Bridge additions, 2026. LGPL-2.1-or-later. */
 +package com.winlator.studiobridge;
 +
@@ -639,6 +1444,7 @@ index 0000000..45efd0a
 +        super(activity);this.server=server;setBackgroundColor(0xff202020);setHorizontalScrollBarEnabled(true);setFillViewport(false);
 +        row=new LinearLayout(activity);row.setPadding(dp(4),0,dp(4),0);addView(row);
 +        action("Unofficial",()->new androidx.appcompat.app.AlertDialog.Builder(activity).setTitle("Experimental fan-made project").setMessage(StudioHubActivity.DISCLAIMER).setPositiveButton("Close",null).show());
++        action("Login",()->{if(activity instanceof com.winlator.XServerDisplayActivity)StudioLoginBridge.showLoginBridgeMenu((com.winlator.XServerDisplayActivity)activity);});
 +        action("Keyboard",()->AppUtils.showKeyboard(activity));
 +        chord("Undo",XKeycode.KEY_CTRL_L,XKeycode.KEY_Z);
 +        chord("Redo",XKeycode.KEY_CTRL_L,XKeycode.KEY_Y);
@@ -668,6 +1474,22 @@ index 0000000..45efd0a
 +    private Button button(String text){Button b=new Button(getContext());b.setText(text);b.setAllCaps(false);b.setTextSize(14);b.setContentDescription(text);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(52));lp.setMargins(dp(2),dp(4),dp(2),dp(4));row.addView(b,lp);return b;}
 +    private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
 +}
+diff --git a/app/src/main/java/com/winlator/winhandler/WinHandler.java b/app/src/main/java/com/winlator/winhandler/WinHandler.java
+index 3318b9f..ebf79f9 100644
+--- a/app/src/main/java/com/winlator/winhandler/WinHandler.java
++++ b/app/src/main/java/com/winlator/winhandler/WinHandler.java
+@@ -362,7 +362,10 @@ public class WinHandler {
+                 int requestLength = receiveData.getInt();
+                 byte[] data = new byte[requestLength];
+                 socket.receive(new DatagramPacket(data, data.length));
+-                FileUtils.openIntent(activity, new String(data));
++                String url = new String(data, StandardCharsets.UTF_8);
++                if (!com.winlator.studiobridge.StudioLoginBridge.handleOpenUrl(activity, url)) {
++                    FileUtils.openIntent(activity, url);
++                }
+                 break;
+             }
+             case RequestCodes.MIDI_OPEN: {
 diff --git a/app/src/main/res/values-pt/strings.xml b/app/src/main/res/values-pt/strings.xml
 index e2d342c..0f448cc 100644
 --- a/app/src/main/res/values-pt/strings.xml
@@ -795,6 +1617,91 @@ index 0000000..b67d32b
 +   System.out.println("PASS: "+checks+" deployment host/marker/locking checks (no network requests)");
 +  }finally{DeploymentFiles.deleteTree(root);}
 + }
++}
+diff --git a/tests/studiobridge/StudioLoginBridgeTest.java b/tests/studiobridge/StudioLoginBridgeTest.java
+new file mode 100644
+index 0000000..1cfa31f
+--- /dev/null
++++ b/tests/studiobridge/StudioLoginBridgeTest.java
+@@ -0,0 +1,79 @@
++package com.winlator.studiobridge;
++
++import java.io.File;
++import java.io.IOException;
++import java.nio.file.Files;
++
++public class StudioLoginBridgeTest {
++    static int checks;
++    interface Op { void run() throws Exception; }
++
++    static void good(boolean condition, String name) {
++        if (!condition) throw new AssertionError(name);
++        checks++;
++    }
++
++    static void rejects(Op op, String name) throws Exception {
++        try {
++            op.run();
++        } catch (IOException expected) {
++            checks++;
++            return;
++        }
++        throw new AssertionError("Accepted " + name);
++    }
++
++    public static void main(String[] args) throws Exception {
++        File root = Files.createTempDirectory("studio-login-bridge-test").toFile();
++        try {
++            String sample = "roblox-studio-auth:/?code=abc123_def-456%2B789%3D&state=xyz987&client_id=12345";
++            good(StudioLoginBridge.isStudioCallbackUri(sample), "detects roblox-studio-auth URI");
++            good(StudioLoginBridge.isStudioCallbackUri("ROBLOX-STUDIO-AUTH:/?code=1"), "case-insensitive auth URI");
++            good(StudioLoginBridge.isStudioCallbackUri("roblox-studio:1+launchmode:edit"), "detects roblox-studio URI");
++            good(StudioLoginBridge.isStudioCallbackUri("intent:///?code=abc#Intent;scheme=roblox-studio-auth;end"), "detects intent URI");
++            good(!StudioLoginBridge.isStudioCallbackUri("https://authorize.roblox.com/?client_id=1"), "does not treat https as callback");
++
++            good(StudioLoginBridge.isRobloxAuthUrl("https://authorize.roblox.com/?client_id=123"), "detects authorize.roblox.com");
++            good(StudioLoginBridge.isRobloxAuthUrl("https://www.roblox.com/login"), "detects www.roblox.com");
++            good(!StudioLoginBridge.isRobloxAuthUrl("https://evil-roblox.com/login"), "rejects spoofed domain");
++
++            String norm = StudioLoginBridge.normalizeCallbackUri(sample);
++            good(norm.equals(sample), "normalizes standard callback URI");
++
++            String fromIntent = StudioLoginBridge.normalizeCallbackUri("intent:///?code=test123&state=s1#Intent;scheme=roblox-studio-auth;package=com.winlator;end");
++            good(fromIntent.equals("roblox-studio-auth:/?code=test123&state=s1"), "extracts callback URI from Android intent:// URI");
++
++            String escaped = StudioLoginBridge.escapeBatchArg(sample);
++            good(escaped.contains("%%2B") && escaped.contains("%%3D"), "escapes percent signs for Windows batch");
++
++            for (String bad : new String[]{
++                    "",
++                    "https://authorize.roblox.com/",
++                    "roblox-studio-auth:/?code=\"injected\"",
++                    "roblox-studio-auth:/?code=abc\r\ndel C:\\*",
++                    "roblox-studio-auth:/?code=abc`calc`",
++                    "intent:///?code=1#Intent;scheme=http;end"
++            }) {
++                rejects(() -> StudioLoginBridge.normalizeCallbackUri(bad), "malformed/unsafe URI: " + bad);
++            }
++
++            String dosExe = "C:\\StudioBridge\\versions\\version-4f087c32742644ab\\RobloxStudioBeta.exe";
++            String version = "version-4f087c32742644ab";
++            File bat = StudioLoginBridge.writeAuthArtifacts(root, dosExe, version, sample);
++            good(bat.isFile(), "writes studio-auth.bat");
++            String batText = DeploymentFiles.read(bat);
++            good(batText.contains("regedit.exe /s C:\\StudioBridge\\studio-protocol.reg"), "batch imports protocol registry");
++            good(batText.contains("\"" + dosExe + "\" \"" + escaped + "\""), "batch invokes Studio with escaped callback URI");
++
++            File reg = new File(StudioDeployment.base(root), "studio-protocol.reg");
++            good(reg.isFile(), "writes studio-protocol.reg");
++            String regText = DeploymentFiles.read(reg);
++            good(regText.contains("[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio-auth\\shell\\open\\command]"), "reg defines roblox-studio-auth command");
++            good(regText.contains("winhandler.exe /url"), "reg configures WineBrowser to winhandler.exe /url");
++
++            System.out.println("PASS: " + checks + " login bridge checks");
++        } finally {
++            DeploymentFiles.deleteTree(root);
++        }
++    }
 +}
 diff --git a/tests/studiobridge/TestLiveDeployment.java b/tests/studiobridge/TestLiveDeployment.java
 new file mode 100644

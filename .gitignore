@@ -1,0 +1,4 @@
+KEYS-FOR-GITHUB-SECRETS.md
+*.p12
+*.jks
+*.keystore

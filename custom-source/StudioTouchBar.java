@@ -19,6 +19,7 @@ public final class StudioTouchBar extends HorizontalScrollView {
         super(activity);this.server=server;setBackgroundColor(0xff202020);setHorizontalScrollBarEnabled(true);setFillViewport(false);
         row=new LinearLayout(activity);row.setPadding(dp(4),0,dp(4),0);addView(row);
         action("Unofficial",()->new androidx.appcompat.app.AlertDialog.Builder(activity).setTitle("Experimental fan-made project").setMessage(StudioHubActivity.DISCLAIMER).setPositiveButton("Close",null).show());
+        action("Login",()->{if(activity instanceof com.winlator.XServerDisplayActivity)StudioLoginBridge.showLoginBridgeMenu((com.winlator.XServerDisplayActivity)activity);});
         action("Keyboard",()->AppUtils.showKeyboard(activity));
         chord("Undo",XKeycode.KEY_CTRL_L,XKeycode.KEY_Z);
         chord("Redo",XKeycode.KEY_CTRL_L,XKeycode.KEY_Y);

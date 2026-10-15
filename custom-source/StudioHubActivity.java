@@ -38,6 +38,11 @@ public class StudioHubActivity extends AppCompatActivity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);getWindow().setStatusBarColor(0xff191919);getWindow().setNavigationBarColor(0xff191919);
+        android.content.SharedPreferences initPrefs=PreferenceManager.getDefaultSharedPreferences(this);
+        initPrefs.edit().putBoolean("enable_background_protection",true).putBoolean("enable_background_wakelock",true).apply();
+        if(android.os.Build.VERSION.SDK_INT>=33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},1001);
+        }
         ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(0xff191919);
         column=new LinearLayout(this);column.setOrientation(LinearLayout.VERTICAL);column.setPadding(dp(20),dp(24),dp(20),dp(32));scroll.addView(column);setContentView(scroll);
         text("STUDIO BRIDGE · EXPERIMENTAL",14,0xff87b8f0,12);
@@ -103,6 +108,8 @@ public class StudioHubActivity extends AppCompatActivity {
                 if(!prefs.contains("cursor_scale"))edit.putFloat("cursor_scale",1.4f);
                 if(!prefs.contains("cursor_speed"))edit.putFloat("cursor_speed",0.7f);
                 if(!prefs.contains("move_cursor_to_touchpoint"))edit.putBoolean("move_cursor_to_touchpoint",false);
+                edit.putBoolean("enable_background_protection",true);
+                edit.putBoolean("enable_background_wakelock",true);
                 edit.apply();status.setText("Dedicated container created. Download Studio next; compatibility is unverified.");
             });
         }catch(Exception e){end();message("Cannot create container",e.toString());}
@@ -135,6 +142,7 @@ public class StudioHubActivity extends AppCompatActivity {
         try {
             File exe=StudioDeployment.currentExecutable(c.getRootDir());
             if(exe==null){message("Studio not installed","Complete the download step first.");return;}
+            StudioLoginBridge.configureWineRegistry(c);
             Intent intent=new Intent(this,XServerDisplayActivity.class);intent.putExtra("container_id",c.id);intent.putExtra("exec_path",exe.getAbsolutePath());intent.putExtra("studio_bridge_session",true);startActivity(intent);
         }catch(Exception e){message("Cannot launch",e.toString());}
     }

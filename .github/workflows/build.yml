@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'studio-bridge-changes.patch'
+      - 'custom-source/**'
       - 'scripts/build-studio-bridge.sh'
       - '.github/workflows/build.yml'
 permissions:
@@ -23,18 +24,28 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Build from pinned upstream and reviewed source patch
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/build-studio-bridge.sh
-      - name: Publish private experimental release assets
+      - name: Upload APK build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudioBridge-0.2-experimental
+          path: dist/*
+      - name: Publish experimental release assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          tag=v0.1.0-experimental
+          tag=v0.2.0-experimental
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo 'This release tag already exists; refusing to replace its assets.' >&2
-            exit 1
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* --target "$GITHUB_SHA" --prerelease \
+              --title 'Studio Bridge 0.2 — Login Bridge Fix (experimental)' \
+              --notes-file RELEASE-NOTES.md
           fi
-          gh release create "$tag" dist/* --target "$GITHUB_SHA" --prerelease \
-            --title 'Studio Bridge 0.1 — experimental, Android unverified' \
-            --notes-file RELEASE-NOTES.md
