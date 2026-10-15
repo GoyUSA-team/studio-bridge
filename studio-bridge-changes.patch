@@ -179,23 +179,25 @@ index 1262c0d..1a2c9f2 100644
          <activity android:name="com.winlator.ControlsEditorActivity"
              android:exported="false"
 diff --git a/app/src/main/java/com/winlator/MainActivity.java b/app/src/main/java/com/winlator/MainActivity.java
-index dd126b1..98f5cb3 100644
+index dd126b1..39da567 100644
 --- a/app/src/main/java/com/winlator/MainActivity.java
 +++ b/app/src/main/java/com/winlator/MainActivity.java
-@@ -63,8 +63,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
- 
+@@ -64,7 +64,17 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
          preferences = PreferenceManager.getDefaultSharedPreferences(this);
  
--        Intent intent = getIntent();
+         Intent intent = getIntent();
 -        editInputControls = intent.getBooleanExtra("edit_input_controls", false);
-+        Intent hubIntent = new Intent(this, com.winlator.studiobridge.StudioHubActivity.class);
-+        if (intent != null && intent.getData() != null) {
-+            hubIntent.setData(intent.getData());
++        editInputControls = intent != null && intent.getBooleanExtra("edit_input_controls", false);
++        if (!editInputControls) {
++            Intent hubIntent = new Intent(this, com.winlator.studiobridge.StudioHubActivity.class);
++            if (intent != null && intent.getData() != null) {
++                hubIntent.setData(intent.getData());
++            }
++            hubIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
++            startActivity(hubIntent);
++            finish();
++            return;
 +        }
-+        hubIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-+        startActivity(hubIntent);
-+        finish();
-+        if (true) return;
          if (editInputControls) {
              selectedProfileId = intent.getIntExtra("selected_profile_id", 0);
              actionBar.setHomeAsUpIndicator(R.drawable.icon_action_bar_back);
