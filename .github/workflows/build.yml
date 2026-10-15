@@ -1,0 +1,40 @@
+name: Build experimental APK and release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'studio-bridge-changes.patch'
+      - 'scripts/build-studio-bridge.sh'
+      - '.github/workflows/build.yml'
+permissions:
+  contents: write
+concurrency:
+  group: studio-bridge-experimental-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build from pinned upstream and reviewed source patch
+        run: bash scripts/build-studio-bridge.sh
+      - name: Publish private experimental release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag=v0.1.0-experimental
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo 'This release tag already exists; refusing to replace its assets.' >&2
+            exit 1
+          fi
+          gh release create "$tag" dist/* --target "$GITHUB_SHA" --prerelease \
+            --title 'Studio Bridge 0.1 — experimental, Android unverified' \
+            --notes-file RELEASE-NOTES.md
