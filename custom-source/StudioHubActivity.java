@@ -113,15 +113,15 @@ public class StudioHubActivity extends AppCompatActivity {
 
     private static final String[] BOX64_KEYS = new String[]{
             Box64Preset.STABILITY,
+            Box64Preset.CONSERVATIVE,
             Box64Preset.INTERMEDIATE,
-            Box64Preset.PERFORMANCE,
-            Box64Preset.COMPATIBILITY
+            Box64Preset.PERFORMANCE
     };
     private static final String[] BOX64_LABELS = new String[]{
             "Stability · Safe JIT (Recommended for Studio)",
+            "Conservative · Strict Compatibility JIT",
             "Intermediate · Balanced JIT",
-            "Performance · Fast JIT",
-            "Compatibility · Strict Emulation"
+            "Performance · Fast JIT"
     };
 
     private static final String[] VRAM_KEYS = new String[]{"4096", "2048", "1024", "0"};
