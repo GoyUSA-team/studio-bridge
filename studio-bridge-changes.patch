@@ -219,7 +219,7 @@ index 3bb2d01..5013711 100644
              cbEnableBackgroundWakelock.setVisibility(isChecked ? View.VISIBLE : View.GONE);
              if (!isChecked) cbEnableBackgroundWakelock.setChecked(false);
 diff --git a/app/src/main/java/com/winlator/XServerDisplayActivity.java b/app/src/main/java/com/winlator/XServerDisplayActivity.java
-index 53fb456..90fb4e2 100644
+index 53fb456..afa1fc9 100644
 --- a/app/src/main/java/com/winlator/XServerDisplayActivity.java
 +++ b/app/src/main/java/com/winlator/XServerDisplayActivity.java
 @@ -129,6 +129,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
@@ -258,7 +258,15 @@ index 53fb456..90fb4e2 100644
              ContainerManager containerManager = new ContainerManager(this);
              container = containerManager.getContainerById(getIntent().getIntExtra("container_id", 0));
              containerManager.activateContainer(container);
-@@ -309,9 +319,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -257,6 +267,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+ 
+                 if (win32AppWorkarounds != null) win32AppWorkarounds.applyWindowWorkarounds(window);
+                 changeFrameRatingVisibility(window, true);
++                com.winlator.studiobridge.StudioLoginBridge.onWindowMapped(XServerDisplayActivity.this, window);
+             }
+ 
+             @Override
+@@ -309,9 +320,17 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
          }
      }
  
@@ -276,7 +284,7 @@ index 53fb456..90fb4e2 100644
          if (environment != null) {
              xServerView.onResume();
              environment.onResume();
-@@ -321,10 +339,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -321,10 +340,13 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
  
      @Override
      public void onPause() {
@@ -291,7 +299,7 @@ index 53fb456..90fb4e2 100644
              xServerView.onPause();
          }
      }
-@@ -337,6 +358,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -337,6 +359,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
  
      @Override
      protected void onDestroy() {
@@ -299,7 +307,7 @@ index 53fb456..90fb4e2 100644
          winHandler.stop();
          if (environment != null) environment.stopEnvironmentComponents();
          ForegroundService.stopSession(this);
-@@ -423,7 +445,21 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -423,7 +446,21 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
          return preferences;
      }
  
@@ -322,7 +330,7 @@ index 53fb456..90fb4e2 100644
          winHandler.stop();
          if (environment != null) environment.stopEnvironmentComponents();
  
-@@ -485,6 +521,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -485,6 +522,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
              containerDataChanged = true;
          }
  
@@ -333,7 +341,7 @@ index 53fb456..90fb4e2 100644
          if (containerDataChanged) container.saveData();
      }
  
-@@ -551,6 +591,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -551,6 +592,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
              environment.addComponent(new VirGLRendererComponent(xServer, UnixSocketConfig.create(rootPath, UnixSocketConfig.VIRGL_SERVER_PATH)));
          }
  
@@ -344,7 +352,7 @@ index 53fb456..90fb4e2 100644
          guestProgramLauncherComponent.setEnvVars(envVars);
          guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
          environment.addComponent(guestProgramLauncherComponent);
-@@ -619,6 +663,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -619,6 +664,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
              }
          }
  
@@ -363,7 +371,27 @@ index 53fb456..90fb4e2 100644
          if (MainActivity.DEBUG_MODE) rootView.addView(AppUtils.createDebugMsgTextView(this));
          AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
      }
-@@ -801,6 +857,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -651,18 +708,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+         final CheckBox cbShowTouchscreenControls = dialog.findViewById(R.id.CBShowTouchscreenControls);
+         cbShowTouchscreenControls.setChecked(inputControlsView.isShowTouchscreenControls());
+ 
+-        dialog.findViewById(R.id.BTSettings).setOnClickListener((v) -> {
+-            int position = sProfile.getSelectedItemPosition();
+-            Intent intent = new Intent(this, MainActivity.class);
+-            intent.putExtra("edit_input_controls", true);
+-            intent.putExtra("selected_profile_id", position > 0 ? inputControlsManager.getProfiles().get(position - 1).id : 0);
+-            editInputControlsCallback = () -> {
+-                hideInputControls();
+-                inputControlsManager.loadProfiles(true);
+-                loadProfileSpinner.run();
+-            };
+-            startActivityForResult(intent, MainActivity.EDIT_INPUT_CONTROLS_REQUEST_CODE);
+-        });
++        dialog.findViewById(R.id.BTSettings).setVisibility(View.GONE);
+ 
+         dialog.setOnConfirmCallback(() -> {
+             xServer.setRelativeMouseMovement(cbRelativeMouseMovement.isChecked());
+@@ -801,6 +847,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
          return inputControlsView;
      }
  
@@ -379,7 +407,7 @@ index 53fb456..90fb4e2 100644
      private boolean extractDXWrapperFiles() {
          String cacheId = "";
          if (dxwrapper.equals(DXWrappers.DXVK)) {
-@@ -854,7 +919,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -854,7 +909,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
              if (!hasD3D10DllFile[0]) restoreBuiltinDllFiles("d3d10.dll", "d3d10_1.dll");
          }
  
@@ -822,10 +850,10 @@ index 0000000..edcb1e9
 +}
 diff --git a/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java b/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java
 new file mode 100644
-index 0000000..0f04eb2
+index 0000000..ab3690a
 --- /dev/null
 +++ b/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java
-@@ -0,0 +1,1274 @@
+@@ -0,0 +1,1290 @@
 +/* Studio Bridge additions, 2026. LGPL-2.1-or-later. */
 +package com.winlator.studiobridge;
 +
@@ -919,10 +947,11 @@ index 0000000..0f04eb2
 +            "Native Vulkan · Direct (No DXVK Wrapper)"
 +    };
 +
-+    private static final String[] RENDERER_KEYS = new String[]{"Auto", "D3D11", "Vulkan", "OpenGL"};
++    private static final String[] RENDERER_KEYS = new String[]{"Auto", "D3D11", "D3D11FL10", "Vulkan", "OpenGL"};
 +    private static final String[] RENDERER_LABELS = new String[]{
 +            "Auto · D3D11 for DXVK/WineD3D, Vulkan for Native (Recommended)",
 +            "Force Direct3D 11 · FFlagDebugGraphicsPreferD3D11",
++            "Force Direct3D 11 FL10 · FFlagDebugGraphicsPreferD3D11FL10 (Shader Model 4.0)",
 +            "Force Vulkan · FFlagDebugGraphicsPreferVulkan",
 +            "Force OpenGL · FFlagDebugGraphicsPreferOpenGL"
 +    };
@@ -1021,6 +1050,7 @@ index 0000000..0f04eb2
 +    private CheckBox cbKernelbasePatch;
 +    private CheckBox cbMimallocFix;
 +    private CheckBox cbDisableDxdiagn;
++    private CheckBox cbQtSoftwareUi;
 +    private CheckBox cbWebview2Fix;
 +    private CheckBox cbDxvkAsync;
 +    private CheckBox cbDarkTheme;
@@ -1050,16 +1080,6 @@ index 0000000..0f04eb2
 +            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
 +        }
 +
-+        // Proactively patch RootFS kernelbase.dll in background if runtime is already extracted
-+        executor.execute(() -> {
-+            try {
-+                RootFS fs = RootFS.find(this);
-+                if (fs.isValid()) {
-+                    StudioLoginBridge.patchRootFSKernelbase(fs.getRootDir());
-+                }
-+            } catch (Exception ignored) {}
-+        });
-+
 +        ScrollView scroll = new ScrollView(this);
 +        GradientDrawable pageBg = new GradientDrawable(
 +                GradientDrawable.Orientation.TOP_BOTTOM,
@@ -1082,6 +1102,25 @@ index 0000000..0f04eb2
 +
 +        loadSavedSettingsIntoViews();
 +        refresh();
++
++        // Proactively patch RootFS kernelbase.dll and migrate existing Studio containers in background
++        executor.execute(() -> {
++            try {
++                RootFS fs = RootFS.find(this);
++                if (fs.isValid()) {
++                    StudioLoginBridge.patchRootFSKernelbase(fs.getRootDir());
++                }
++                if (!studioPrefs.getBoolean("containers_migrated_v3", false)) {
++                    for (Container c : new ContainerManager(this).getContainers()) {
++                        if ("1".equals(c.getExtra("studioBridge", "0"))) {
++                            StudioLoginBridge.patchRootFSKernelbase(c.getRootDir());
++                            StudioLoginBridge.configureWineRegistry(this, c);
++                        }
++                    }
++                    studioPrefs.edit().putBoolean("containers_migrated_v3", true).apply();
++                }
++            } catch (Exception ignored) {}
++        });
 +    }
 +
 +    @Override
@@ -1109,6 +1148,7 @@ index 0000000..0f04eb2
 +                    .putBoolean("pref_kernelbase_patch", true)
 +                    .putBoolean("pref_mimalloc_fix", true)
 +                    .putBoolean("pref_disable_dxdiagn", true)
++                    .putBoolean("pref_qt_software_ui", true)
 +                    .putBoolean("pref_webview2_fix", true)
 +                    .putBoolean("pref_dxvk_async", true)
 +                    .putBoolean("pref_dark_theme", true)
@@ -1268,7 +1308,9 @@ index 0000000..0f04eb2
 +        cbMimallocFix = addStyledCheckbox(card,
 +                "Sync Native UCRT/MSVC DLLs + MIMALLOC_FORCE_REDIRECT=1 (Fixes Allocator Crash)", true);
 +        cbDisableDxdiagn = addStyledCheckbox(card,
-+                "Disable dxdiagn.dll & Wine MenuBuilder (Prevents Startup DX Probe Freeze)", true);
++                "Disable dxdiagn.dll, D3D12/VKD3D & Wine MenuBuilder (Prevents Startup DX Probe Freeze)", true);
++        cbQtSoftwareUi = addStyledCheckbox(card,
++                "Use Qt6 Software UI Backend (QSG_RHI_BACKEND=software · Fixes DXVK Splash/Login Freeze)", true);
 +        cbWebview2Fix = addStyledCheckbox(card,
 +                "Set msedgewebview2.exe to Windows 8 Mode (Prevents WebView2 Crash)", true);
 +        cbDxvkAsync = addStyledCheckbox(card,
@@ -1300,7 +1342,7 @@ index 0000000..0f04eb2
 +        addSharpButton(card, "TOUCH CONTROLS & TROUBLESHOOTING GUIDE", BTN_SECONDARY, () ->
 +                message("Studio Bridge Controls & Troubleshooting",
 +                        "• Bottom Command Bar: Provides instant access to LOGIN, KEYBOARD, PLAY F5, UNDO, REDO, SAVE, FOCUS F, ESC, held W/A/S/D movement, LOOK · HOLD (right mouse), WINDOWS, LOGS, and HUB / EXIT.\n\n"
-+                                + "• Splash Screen Hang Fix: Studio Bridge automatically patches Wine 10.10's kernelbase.dll to export VirtualProtectFromApp, copies Studio's native UCRT/MSVC runtime DLLs for mimalloc, and configures ClientAppSettings.json so Studio does not hang on the splash screen.\n\n"
++                                + "• Splash Screen Hang Fix: Studio Bridge automatically patches Wine 10.10's kernelbase.dll to export VirtualProtectFromApp, copies Studio's native UCRT/MSVC runtime DLLs for mimalloc, sets QSG_RHI_BACKEND=software for Qt6 login panels, and configures ClientAppSettings.json so Studio does not hang on the splash screen.\n\n"
 +                                + "• Graphics Presets: If DXVK 2.4.1 fails on your GPU's Vulkan driver, select 'DXVK 1.10.3 · Vortek Vulkan' or 'WineD3D · VirGL OpenGL' and tap SAVE & APPLY ALL SETTINGS.\n\n"
 +                                + "• OAuth Sign-In: Tap LOGIN in the bottom bar during a session to sign in via the In-App OAuth Bridge or full-screen browser without Android split-screen.")
 +        );
@@ -1363,6 +1405,7 @@ index 0000000..0f04eb2
 +            cbKernelbasePatch.setChecked(studioPrefs.getBoolean("pref_kernelbase_patch", true));
 +            cbMimallocFix.setChecked(studioPrefs.getBoolean("pref_mimalloc_fix", true));
 +            cbDisableDxdiagn.setChecked(studioPrefs.getBoolean("pref_disable_dxdiagn", true));
++            cbQtSoftwareUi.setChecked(studioPrefs.getBoolean("pref_qt_software_ui", true));
 +            cbWebview2Fix.setChecked(studioPrefs.getBoolean("pref_webview2_fix", true));
 +            cbDxvkAsync.setChecked(studioPrefs.getBoolean("pref_dxvk_async", true));
 +            cbDarkTheme.setChecked(studioPrefs.getBoolean("pref_dark_theme", true));
@@ -1408,6 +1451,7 @@ index 0000000..0f04eb2
 +                .putBoolean("pref_kernelbase_patch", cbKernelbasePatch.isChecked())
 +                .putBoolean("pref_mimalloc_fix", cbMimallocFix.isChecked())
 +                .putBoolean("pref_disable_dxdiagn", cbDisableDxdiagn.isChecked())
++                .putBoolean("pref_qt_software_ui", cbQtSoftwareUi.isChecked())
 +                .putBoolean("pref_webview2_fix", cbWebview2Fix.isChecked())
 +                .putBoolean("pref_dxvk_async", cbDxvkAsync.isChecked())
 +                .putBoolean("pref_dark_theme", cbDarkTheme.isChecked())
@@ -2102,10 +2146,10 @@ index 0000000..0f04eb2
 +}
 diff --git a/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java b/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java
 new file mode 100644
-index 0000000..8799311
+index 0000000..05ccf37
 --- /dev/null
 +++ b/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java
-@@ -0,0 +1,1124 @@
+@@ -0,0 +1,1223 @@
 +/* Studio Bridge additions, 2026. Distributed under LGPL-2.1-or-later. */
 +package com.winlator.studiobridge;
 +
@@ -2116,6 +2160,7 @@ index 0000000..8799311
 +import android.content.Context;
 +import android.content.Intent;
 +import android.content.SharedPreferences;
++import android.graphics.Bitmap;
 +import android.graphics.Color;
 +import android.graphics.Typeface;
 +import android.graphics.drawable.GradientDrawable;
@@ -2127,6 +2172,7 @@ index 0000000..8799311
 +import android.view.Window;
 +import android.view.WindowManager;
 +import android.webkit.CookieManager;
++import android.webkit.JavascriptInterface;
 +import android.webkit.WebChromeClient;
 +import android.webkit.WebResourceRequest;
 +import android.webkit.WebSettings;
@@ -2455,19 +2501,24 @@ index 0000000..8799311
 +
 +    public static String buildClientAppSettingsJson(String rendererMode) {
 +        String mode = rendererMode != null ? rendererMode.trim() : "D3D11";
++        String activeRenderer;
++        if ("Vulkan".equalsIgnoreCase(mode)) {
++            activeRenderer = "Vulkan";
++        } else if ("OpenGL".equalsIgnoreCase(mode)) {
++            activeRenderer = "OpenGL";
++        } else if ("D3D11FL10".equalsIgnoreCase(mode)) {
++            activeRenderer = "D3D11FL10";
++        } else {
++            activeRenderer = "D3D11";
++        }
++
++        String[] allRenderers = new String[]{"D3D11", "D3D11FL10", "Vulkan", "OpenGL"};
 +        StringBuilder sb = new StringBuilder();
 +        sb.append("{\n");
-+        if ("Vulkan".equalsIgnoreCase(mode)) {
-+            sb.append("  \"FFlagDebugGraphicsPreferVulkan\": true,\n");
-+            sb.append("  \"FFlagDebugGraphicsDisableD3D11\": true,\n");
-+        } else if ("OpenGL".equalsIgnoreCase(mode)) {
-+            sb.append("  \"FFlagDebugGraphicsPreferOpenGL\": true,\n");
-+            sb.append("  \"FFlagDebugGraphicsDisableD3D11\": true,\n");
-+            sb.append("  \"FFlagDebugGraphicsDisableVulkan\": true,\n");
-+        } else {
-+            // Default D3D11 (optimal for DXVK and WineD3D; prevents Studio hanging on Vulkan 1.3 probes)
-+            sb.append("  \"FFlagDebugGraphicsPreferD3D11\": true,\n");
-+            sb.append("  \"FFlagDebugGraphicsDisableVulkan\": true,\n");
++        for (String avail : allRenderers) {
++            boolean isCurrent = avail.equals(activeRenderer);
++            sb.append("  \"FFlagDebugGraphicsPrefer").append(avail).append("\": ").append(isCurrent).append(",\n");
++            sb.append("  \"FFlagDebugGraphicsDisable").append(avail).append("\": ").append(!isCurrent).append(",\n");
 +        }
 +        sb.append("  \"FLogStudioLuauPlugin\": 0\n");
 +        sb.append("}\n");
@@ -2506,20 +2557,11 @@ index 0000000..8799311
 +            }
 +        }
 +
-+        // Also mirror DXVK d3d11.dll and dxgi.dll next to RobloxStudioBeta.exe when DXVK is active,
-+        // or remove stale local copies when using WineD3D/Vulkan.
-+        for (String dxDll : new String[]{"d3d11.dll", "dxgi.dll"}) {
++        // Remove any local d3d11.dll/dxgi.dll from versionDir so Wine always loads the active
++        // DXVK or WineD3D DLLs managed by Winlator in C:\windows\system32.
++        for (String dxDll : new String[]{"d3d11.dll", "dxgi.dll", "d3d10core.dll", "d3d9.dll"}) {
 +            File localDxDll = new File(versionDir, dxDll);
-+            if (useDxvk) {
-+                File sysDxDll = new File(system32Dir, dxDll);
-+                if (sysDxDll.isFile()) {
-+                    try {
-+                        if (!localDxDll.isFile() || localDxDll.length() != sysDxDll.length()) {
-+                            copyFile(sysDxDll, localDxDll);
-+                        }
-+                    } catch (Exception ignored) {}
-+                }
-+            } else if (localDxDll.isFile()) {
++            if (localDxDll.isFile()) {
 +                localDxDll.delete();
 +            }
 +        }
@@ -2560,11 +2602,13 @@ index 0000000..8799311
 +                resolvedRenderer = "Vulkan";
 +            } else if ("OpenGL".equalsIgnoreCase(rendererPref)) {
 +                resolvedRenderer = "OpenGL";
++            } else if ("D3D11FL10".equalsIgnoreCase(rendererPref)) {
++                resolvedRenderer = "D3D11FL10";
 +            } else if ("D3D11".equalsIgnoreCase(rendererPref)) {
 +                resolvedRenderer = "D3D11";
 +            } else {
 +                // Auto: D3D11 for DXVK and WineD3D, Vulkan only if Native Vulkan preset is selected
-+                String presetMode = prefs != null ? prefs.getString("pref_graphics_preset", "DXVK_241") : "DXVK_241";
++                String presetMode = prefs != null ? prefs.getString("pref_graphics_preset", "DXVK_1103_VORTEK") : "DXVK_1103_VORTEK";
 +                resolvedRenderer = "VULKAN_NATIVE".equals(presetMode) ? "Vulkan" : "D3D11";
 +            }
 +
@@ -2632,6 +2676,8 @@ index 0000000..8799311
 +                    }
 +                    if (disableDxdiagn) {
 +                        editor.setStringValue("Software\\Wine\\DllOverrides", "dxdiagn", "");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d12", "");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d12core", "");
 +                        editor.setStringValue("Software\\Wine\\DllOverrides", "winemenubuilder.exe", "");
 +                        editor.setStringValue("Software\\Wine\\DllOverrides", "mscoree", "");
 +                        editor.setStringValue("Software\\Wine\\DllOverrides", "mshtml", "");
@@ -2664,6 +2710,7 @@ index 0000000..8799311
 +        boolean mimallocFix = prefs == null || prefs.getBoolean("pref_mimalloc_fix", true);
 +        boolean disableDxdiagn = prefs == null || prefs.getBoolean("pref_disable_dxdiagn", true);
 +        boolean dxvkAsync = prefs == null || prefs.getBoolean("pref_dxvk_async", true);
++        boolean qtSoftwareUi = prefs == null || prefs.getBoolean("pref_qt_software_ui", true);
 +        String fpsCap = prefs != null ? prefs.getString("pref_fps_cap", "0") : "0";
 +
 +        String dxWrapper = container != null ? container.getDXWrapper() : "dxvk";
@@ -2673,12 +2720,22 @@ index 0000000..8799311
 +        envVars.put("WINE_LARGE_ADDRESS_AWARE", "1");
 +        envVars.put("WINEESYNC", "1");
 +        envVars.put("WINEFSYNC", "1");
++        envVars.put("XR_LOADER_DEBUG", "none");
++        envVars.put("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--in-process-gpu --no-sandbox --disable-gpu");
++        envVars.put("WINE_D3D_CONFIG", useDxvk ? "renderer=vulkan" : "renderer=gl");
++        if (qtSoftwareUi) {
++            // Render Qt6 2D Login/Ribbon QML UI via CPU rasterizer so it never deadlocks
++            // creating a competing Vulkan swapchain on Vortek while the 3D Viewport uses DXVK.
++            envVars.put("QSG_RHI_BACKEND", "software");
++            envVars.put("QT_QUICK_BACKEND", "software");
++        }
 +        if (mimallocFix) {
 +            envVars.put("MIMALLOC_FORCE_REDIRECT", "1");
 +        }
 +        if (useDxvk) {
 +            envVars.put("DXVK_STATE_CACHE", "1");
 +            envVars.put("DXVK_LOG_LEVEL", "none");
++            envVars.put("DXVK_LOG_PATH", "none");
 +            if (dxvkAsync) {
 +                envVars.put("DXVK_ASYNC", "1");
 +                envVars.put("DXVK_GPLASYNCCACHE", "1");
@@ -2690,7 +2747,7 @@ index 0000000..8799311
 +
 +        StringBuilder dllOverrides = new StringBuilder();
 +        if (disableDxdiagn) {
-+            dllOverrides.append("dxdiagn=;winemenubuilder.exe=;mscoree=;mshtml=;");
++            dllOverrides.append("dxdiagn=;d3d12=;d3d12core=;winemenubuilder.exe=;mscoree=;mshtml=;");
 +        }
 +        if (mimallocFix) {
 +            dllOverrides.append("ucrtbase=n,b;concrt140=n,b;msvcp140=n,b;msvcp140_1=n,b;msvcp140_2=n,b;msvcp140_codecvt_ids=n,b;vccorlib140=n,b;vcruntime140=n,b;vcruntime140_1=n,b;");
@@ -2854,7 +2911,7 @@ index 0000000..8799311
 +        return "@echo off\r\n"
 +                + "C:\\windows\\regedit.exe /s " + STUDIO_PROTOCOL_REG_DOS + "\r\n"
 +                + "cd /d \"" + dosDir + "\"\r\n"
-+                + "start \"\" \"" + dosExePath + "\" \"" + escapedUri + "\"\r\n";
++                + "\"" + dosExePath + "\" \"" + escapedUri + "\"\r\n";
 +    }
 +
 +    public static File writeAuthArtifacts(File containerRoot, String dosExePath, String version, String callbackUri) throws IOException {
@@ -2865,6 +2922,26 @@ index 0000000..8799311
 +        File batFile = new File(base, "studio-auth.bat");
 +        DeploymentFiles.write(batFile, buildAuthBatchScript(dosExePath, callbackUri));
 +        return batFile;
++    }
++
++    public static void onWindowMapped(XServerDisplayActivity activity, com.winlator.xserver.Window window) {
++        if (activity == null || window == null) return;
++        boolean isStudio = activity.getIntent() != null
++                && activity.getIntent().getBooleanExtra("studio_bridge_session", false);
++        if (!isStudio) return;
++        try {
++            if (window.isRenderable() && !window.isDesktopWindow() && !window.hasNoDecorations()) {
++                com.winlator.xserver.Window parent = window.getParent();
++                if (parent != null) {
++                    parent.moveChildAbove(window, null);
++                }
++                long handle = window.getHandle();
++                WinHandler winHandler = activity.getWinHandler();
++                if (winHandler != null && handle > 0) {
++                    winHandler.bringToFront(window.getClassName(), handle);
++                }
++            }
++        } catch (Exception ignored) {}
 +    }
 +
 +    public static void markAwaitingExternalAuth() {
@@ -3055,7 +3132,34 @@ index 0000000..8799311
 +                .show();
 +    }
 +
-+    @SuppressLint("SetJavaScriptEnabled")
++    private static final String JS_OAUTH_INTERCEPTOR =
++            "(function(){"
++            + "if(window.__studioBridgeHooked)return;window.__studioBridgeHooked=true;"
++            + "function checkUrl(u){"
++            + "  if(typeof u==='string'&&(u.toLowerCase().indexOf('roblox-studio-auth:')===0||u.toLowerCase().indexOf('roblox-studio:')===0||u.toLowerCase().indexOf('scheme=roblox-studio')!==-1)){"
++            + "    if(window.StudioAuthBridge&&window.StudioAuthBridge.onCallbackUri){window.StudioAuthBridge.onCallbackUri(u);return true;}"
++            + "  }"
++            + "  return false;"
++            + "}"
++            + "var origOpen=window.open;"
++            + "window.open=function(u){if(checkUrl(u))return null;return origOpen?origOpen.apply(this,arguments):null;};"
++            + "var origAssign=window.location.assign;"
++            + "if(origAssign){window.location.assign=function(u){if(checkUrl(u))return;return origAssign.apply(this,arguments);};}"
++            + "var origReplace=window.location.replace;"
++            + "if(origReplace){window.location.replace=function(u){if(checkUrl(u))return;return origReplace.apply(this,arguments);};}"
++            + "document.addEventListener('click',function(e){"
++            + "  var a=e.target&&e.target.closest?e.target.closest('a'):null;"
++            + "  if(a&&a.href&&checkUrl(a.href)){e.preventDefault();}"
++            + "},true);"
++            + "setInterval(function(){"
++            + "  var iframes=document.querySelectorAll('iframe');"
++            + "  for(var i=0;i<iframes.length;i++){if(iframes[i].src)checkUrl(iframes[i].src);}"
++            + "  var links=document.querySelectorAll('a[href^=\"roblox-studio\"]');"
++            + "  for(var j=0;j<links.length;j++){if(links[j].href)checkUrl(links[j].href);}"
++            + "},250);"
++            + "})();";
++
++    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
 +    public static void showInAppLoginDialog(XServerDisplayActivity activity, String startUrl) {
 +        if (activity == null || activity.isDestroyed()) return;
 +        dismissActiveLoginDialog();
@@ -3124,6 +3228,18 @@ index 0000000..8799311
 +        cookieManager.setAcceptCookie(true);
 +        cookieManager.setAcceptThirdPartyCookies(webView, true);
 +
++        webView.addJavascriptInterface(new Object() {
++            @JavascriptInterface
++            public void onCallbackUri(final String url) {
++                if (isStudioCallbackUri(url)) {
++                    activity.runOnUiThread(() -> {
++                        CookieManager.getInstance().flush();
++                        deliverAuthCallback(activity, url);
++                    });
++                }
++            }
++        }, "StudioAuthBridge");
++
 +        webView.setWebChromeClient(new WebChromeClient() {
 +            @Override
 +            public void onProgressChanged(WebView view, int newProgress) {
@@ -3145,6 +3261,33 @@ index 0000000..8799311
 +                    return false;
 +                }
 +                return true;
++            }
++
++            @Override
++            public void onPageStarted(WebView view, String url, Bitmap favicon) {
++                if (isStudioCallbackUri(url)) {
++                    CookieManager.getInstance().flush();
++                    deliverAuthCallback(activity, url);
++                    return;
++                }
++                super.onPageStarted(view, url, favicon);
++                view.evaluateJavascript(JS_OAUTH_INTERCEPTOR, null);
++            }
++
++            @Override
++            public void onPageFinished(WebView view, String url) {
++                super.onPageFinished(view, url);
++                view.evaluateJavascript(JS_OAUTH_INTERCEPTOR, null);
++            }
++
++            @Override
++            public void onLoadResource(WebView view, String url) {
++                if (isStudioCallbackUri(url)) {
++                    CookieManager.getInstance().flush();
++                    deliverAuthCallback(activity, url);
++                    return;
++                }
++                super.onLoadResource(view, url);
 +            }
 +
 +            @Override

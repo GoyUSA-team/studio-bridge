@@ -91,10 +91,11 @@ public class StudioHubActivity extends AppCompatActivity {
             "Native Vulkan · Direct (No DXVK Wrapper)"
     };
 
-    private static final String[] RENDERER_KEYS = new String[]{"Auto", "D3D11", "Vulkan", "OpenGL"};
+    private static final String[] RENDERER_KEYS = new String[]{"Auto", "D3D11", "D3D11FL10", "Vulkan", "OpenGL"};
     private static final String[] RENDERER_LABELS = new String[]{
             "Auto · D3D11 for DXVK/WineD3D, Vulkan for Native (Recommended)",
             "Force Direct3D 11 · FFlagDebugGraphicsPreferD3D11",
+            "Force Direct3D 11 FL10 · FFlagDebugGraphicsPreferD3D11FL10 (Shader Model 4.0)",
             "Force Vulkan · FFlagDebugGraphicsPreferVulkan",
             "Force OpenGL · FFlagDebugGraphicsPreferOpenGL"
     };
@@ -193,6 +194,7 @@ public class StudioHubActivity extends AppCompatActivity {
     private CheckBox cbKernelbasePatch;
     private CheckBox cbMimallocFix;
     private CheckBox cbDisableDxdiagn;
+    private CheckBox cbQtSoftwareUi;
     private CheckBox cbWebview2Fix;
     private CheckBox cbDxvkAsync;
     private CheckBox cbDarkTheme;
@@ -222,16 +224,6 @@ public class StudioHubActivity extends AppCompatActivity {
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
         }
 
-        // Proactively patch RootFS kernelbase.dll in background if runtime is already extracted
-        executor.execute(() -> {
-            try {
-                RootFS fs = RootFS.find(this);
-                if (fs.isValid()) {
-                    StudioLoginBridge.patchRootFSKernelbase(fs.getRootDir());
-                }
-            } catch (Exception ignored) {}
-        });
-
         ScrollView scroll = new ScrollView(this);
         GradientDrawable pageBg = new GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
@@ -254,6 +246,25 @@ public class StudioHubActivity extends AppCompatActivity {
 
         loadSavedSettingsIntoViews();
         refresh();
+
+        // Proactively patch RootFS kernelbase.dll and migrate existing Studio containers in background
+        executor.execute(() -> {
+            try {
+                RootFS fs = RootFS.find(this);
+                if (fs.isValid()) {
+                    StudioLoginBridge.patchRootFSKernelbase(fs.getRootDir());
+                }
+                if (!studioPrefs.getBoolean("containers_migrated_v3", false)) {
+                    for (Container c : new ContainerManager(this).getContainers()) {
+                        if ("1".equals(c.getExtra("studioBridge", "0"))) {
+                            StudioLoginBridge.patchRootFSKernelbase(c.getRootDir());
+                            StudioLoginBridge.configureWineRegistry(this, c);
+                        }
+                    }
+                    studioPrefs.edit().putBoolean("containers_migrated_v3", true).apply();
+                }
+            } catch (Exception ignored) {}
+        });
     }
 
     @Override
@@ -281,6 +292,7 @@ public class StudioHubActivity extends AppCompatActivity {
                     .putBoolean("pref_kernelbase_patch", true)
                     .putBoolean("pref_mimalloc_fix", true)
                     .putBoolean("pref_disable_dxdiagn", true)
+                    .putBoolean("pref_qt_software_ui", true)
                     .putBoolean("pref_webview2_fix", true)
                     .putBoolean("pref_dxvk_async", true)
                     .putBoolean("pref_dark_theme", true)
@@ -440,7 +452,9 @@ public class StudioHubActivity extends AppCompatActivity {
         cbMimallocFix = addStyledCheckbox(card,
                 "Sync Native UCRT/MSVC DLLs + MIMALLOC_FORCE_REDIRECT=1 (Fixes Allocator Crash)", true);
         cbDisableDxdiagn = addStyledCheckbox(card,
-                "Disable dxdiagn.dll & Wine MenuBuilder (Prevents Startup DX Probe Freeze)", true);
+                "Disable dxdiagn.dll, D3D12/VKD3D & Wine MenuBuilder (Prevents Startup DX Probe Freeze)", true);
+        cbQtSoftwareUi = addStyledCheckbox(card,
+                "Use Qt6 Software UI Backend (QSG_RHI_BACKEND=software · Fixes DXVK Splash/Login Freeze)", true);
         cbWebview2Fix = addStyledCheckbox(card,
                 "Set msedgewebview2.exe to Windows 8 Mode (Prevents WebView2 Crash)", true);
         cbDxvkAsync = addStyledCheckbox(card,
@@ -472,7 +486,7 @@ public class StudioHubActivity extends AppCompatActivity {
         addSharpButton(card, "TOUCH CONTROLS & TROUBLESHOOTING GUIDE", BTN_SECONDARY, () ->
                 message("Studio Bridge Controls & Troubleshooting",
                         "• Bottom Command Bar: Provides instant access to LOGIN, KEYBOARD, PLAY F5, UNDO, REDO, SAVE, FOCUS F, ESC, held W/A/S/D movement, LOOK · HOLD (right mouse), WINDOWS, LOGS, and HUB / EXIT.\n\n"
-                                + "• Splash Screen Hang Fix: Studio Bridge automatically patches Wine 10.10's kernelbase.dll to export VirtualProtectFromApp, copies Studio's native UCRT/MSVC runtime DLLs for mimalloc, and configures ClientAppSettings.json so Studio does not hang on the splash screen.\n\n"
+                                + "• Splash Screen Hang Fix: Studio Bridge automatically patches Wine 10.10's kernelbase.dll to export VirtualProtectFromApp, copies Studio's native UCRT/MSVC runtime DLLs for mimalloc, sets QSG_RHI_BACKEND=software for Qt6 login panels, and configures ClientAppSettings.json so Studio does not hang on the splash screen.\n\n"
                                 + "• Graphics Presets: If DXVK 2.4.1 fails on your GPU's Vulkan driver, select 'DXVK 1.10.3 · Vortek Vulkan' or 'WineD3D · VirGL OpenGL' and tap SAVE & APPLY ALL SETTINGS.\n\n"
                                 + "• OAuth Sign-In: Tap LOGIN in the bottom bar during a session to sign in via the In-App OAuth Bridge or full-screen browser without Android split-screen.")
         );
@@ -535,6 +549,7 @@ public class StudioHubActivity extends AppCompatActivity {
             cbKernelbasePatch.setChecked(studioPrefs.getBoolean("pref_kernelbase_patch", true));
             cbMimallocFix.setChecked(studioPrefs.getBoolean("pref_mimalloc_fix", true));
             cbDisableDxdiagn.setChecked(studioPrefs.getBoolean("pref_disable_dxdiagn", true));
+            cbQtSoftwareUi.setChecked(studioPrefs.getBoolean("pref_qt_software_ui", true));
             cbWebview2Fix.setChecked(studioPrefs.getBoolean("pref_webview2_fix", true));
             cbDxvkAsync.setChecked(studioPrefs.getBoolean("pref_dxvk_async", true));
             cbDarkTheme.setChecked(studioPrefs.getBoolean("pref_dark_theme", true));
@@ -580,6 +595,7 @@ public class StudioHubActivity extends AppCompatActivity {
                 .putBoolean("pref_kernelbase_patch", cbKernelbasePatch.isChecked())
                 .putBoolean("pref_mimalloc_fix", cbMimallocFix.isChecked())
                 .putBoolean("pref_disable_dxdiagn", cbDisableDxdiagn.isChecked())
+                .putBoolean("pref_qt_software_ui", cbQtSoftwareUi.isChecked())
                 .putBoolean("pref_webview2_fix", cbWebview2Fix.isChecked())
                 .putBoolean("pref_dxvk_async", cbDxvkAsync.isChecked())
                 .putBoolean("pref_dark_theme", cbDarkTheme.isChecked())

@@ -8,6 +8,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -19,6 +20,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -347,19 +349,24 @@ public final class StudioLoginBridge {
 
     public static String buildClientAppSettingsJson(String rendererMode) {
         String mode = rendererMode != null ? rendererMode.trim() : "D3D11";
+        String activeRenderer;
+        if ("Vulkan".equalsIgnoreCase(mode)) {
+            activeRenderer = "Vulkan";
+        } else if ("OpenGL".equalsIgnoreCase(mode)) {
+            activeRenderer = "OpenGL";
+        } else if ("D3D11FL10".equalsIgnoreCase(mode)) {
+            activeRenderer = "D3D11FL10";
+        } else {
+            activeRenderer = "D3D11";
+        }
+
+        String[] allRenderers = new String[]{"D3D11", "D3D11FL10", "Vulkan", "OpenGL"};
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
-        if ("Vulkan".equalsIgnoreCase(mode)) {
-            sb.append("  \"FFlagDebugGraphicsPreferVulkan\": true,\n");
-            sb.append("  \"FFlagDebugGraphicsDisableD3D11\": true,\n");
-        } else if ("OpenGL".equalsIgnoreCase(mode)) {
-            sb.append("  \"FFlagDebugGraphicsPreferOpenGL\": true,\n");
-            sb.append("  \"FFlagDebugGraphicsDisableD3D11\": true,\n");
-            sb.append("  \"FFlagDebugGraphicsDisableVulkan\": true,\n");
-        } else {
-            // Default D3D11 (optimal for DXVK and WineD3D; prevents Studio hanging on Vulkan 1.3 probes)
-            sb.append("  \"FFlagDebugGraphicsPreferD3D11\": true,\n");
-            sb.append("  \"FFlagDebugGraphicsDisableVulkan\": true,\n");
+        for (String avail : allRenderers) {
+            boolean isCurrent = avail.equals(activeRenderer);
+            sb.append("  \"FFlagDebugGraphicsPrefer").append(avail).append("\": ").append(isCurrent).append(",\n");
+            sb.append("  \"FFlagDebugGraphicsDisable").append(avail).append("\": ").append(!isCurrent).append(",\n");
         }
         sb.append("  \"FLogStudioLuauPlugin\": 0\n");
         sb.append("}\n");
@@ -398,20 +405,11 @@ public final class StudioLoginBridge {
             }
         }
 
-        // Also mirror DXVK d3d11.dll and dxgi.dll next to RobloxStudioBeta.exe when DXVK is active,
-        // or remove stale local copies when using WineD3D/Vulkan.
-        for (String dxDll : new String[]{"d3d11.dll", "dxgi.dll"}) {
+        // Remove any local d3d11.dll/dxgi.dll from versionDir so Wine always loads the active
+        // DXVK or WineD3D DLLs managed by Winlator in C:\windows\system32.
+        for (String dxDll : new String[]{"d3d11.dll", "dxgi.dll", "d3d10core.dll", "d3d9.dll"}) {
             File localDxDll = new File(versionDir, dxDll);
-            if (useDxvk) {
-                File sysDxDll = new File(system32Dir, dxDll);
-                if (sysDxDll.isFile()) {
-                    try {
-                        if (!localDxDll.isFile() || localDxDll.length() != sysDxDll.length()) {
-                            copyFile(sysDxDll, localDxDll);
-                        }
-                    } catch (Exception ignored) {}
-                }
-            } else if (localDxDll.isFile()) {
+            if (localDxDll.isFile()) {
                 localDxDll.delete();
             }
         }
@@ -452,11 +450,13 @@ public final class StudioLoginBridge {
                 resolvedRenderer = "Vulkan";
             } else if ("OpenGL".equalsIgnoreCase(rendererPref)) {
                 resolvedRenderer = "OpenGL";
+            } else if ("D3D11FL10".equalsIgnoreCase(rendererPref)) {
+                resolvedRenderer = "D3D11FL10";
             } else if ("D3D11".equalsIgnoreCase(rendererPref)) {
                 resolvedRenderer = "D3D11";
             } else {
                 // Auto: D3D11 for DXVK and WineD3D, Vulkan only if Native Vulkan preset is selected
-                String presetMode = prefs != null ? prefs.getString("pref_graphics_preset", "DXVK_241") : "DXVK_241";
+                String presetMode = prefs != null ? prefs.getString("pref_graphics_preset", "DXVK_1103_VORTEK") : "DXVK_1103_VORTEK";
                 resolvedRenderer = "VULKAN_NATIVE".equals(presetMode) ? "Vulkan" : "D3D11";
             }
 
@@ -524,6 +524,8 @@ public final class StudioLoginBridge {
                     }
                     if (disableDxdiagn) {
                         editor.setStringValue("Software\\Wine\\DllOverrides", "dxdiagn", "");
+                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d12", "");
+                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d12core", "");
                         editor.setStringValue("Software\\Wine\\DllOverrides", "winemenubuilder.exe", "");
                         editor.setStringValue("Software\\Wine\\DllOverrides", "mscoree", "");
                         editor.setStringValue("Software\\Wine\\DllOverrides", "mshtml", "");
@@ -556,6 +558,7 @@ public final class StudioLoginBridge {
         boolean mimallocFix = prefs == null || prefs.getBoolean("pref_mimalloc_fix", true);
         boolean disableDxdiagn = prefs == null || prefs.getBoolean("pref_disable_dxdiagn", true);
         boolean dxvkAsync = prefs == null || prefs.getBoolean("pref_dxvk_async", true);
+        boolean qtSoftwareUi = prefs == null || prefs.getBoolean("pref_qt_software_ui", true);
         String fpsCap = prefs != null ? prefs.getString("pref_fps_cap", "0") : "0";
 
         String dxWrapper = container != null ? container.getDXWrapper() : "dxvk";
@@ -565,12 +568,22 @@ public final class StudioLoginBridge {
         envVars.put("WINE_LARGE_ADDRESS_AWARE", "1");
         envVars.put("WINEESYNC", "1");
         envVars.put("WINEFSYNC", "1");
+        envVars.put("XR_LOADER_DEBUG", "none");
+        envVars.put("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--in-process-gpu --no-sandbox --disable-gpu");
+        envVars.put("WINE_D3D_CONFIG", useDxvk ? "renderer=vulkan" : "renderer=gl");
+        if (qtSoftwareUi) {
+            // Render Qt6 2D Login/Ribbon QML UI via CPU rasterizer so it never deadlocks
+            // creating a competing Vulkan swapchain on Vortek while the 3D Viewport uses DXVK.
+            envVars.put("QSG_RHI_BACKEND", "software");
+            envVars.put("QT_QUICK_BACKEND", "software");
+        }
         if (mimallocFix) {
             envVars.put("MIMALLOC_FORCE_REDIRECT", "1");
         }
         if (useDxvk) {
             envVars.put("DXVK_STATE_CACHE", "1");
             envVars.put("DXVK_LOG_LEVEL", "none");
+            envVars.put("DXVK_LOG_PATH", "none");
             if (dxvkAsync) {
                 envVars.put("DXVK_ASYNC", "1");
                 envVars.put("DXVK_GPLASYNCCACHE", "1");
@@ -582,7 +595,7 @@ public final class StudioLoginBridge {
 
         StringBuilder dllOverrides = new StringBuilder();
         if (disableDxdiagn) {
-            dllOverrides.append("dxdiagn=;winemenubuilder.exe=;mscoree=;mshtml=;");
+            dllOverrides.append("dxdiagn=;d3d12=;d3d12core=;winemenubuilder.exe=;mscoree=;mshtml=;");
         }
         if (mimallocFix) {
             dllOverrides.append("ucrtbase=n,b;concrt140=n,b;msvcp140=n,b;msvcp140_1=n,b;msvcp140_2=n,b;msvcp140_codecvt_ids=n,b;vccorlib140=n,b;vcruntime140=n,b;vcruntime140_1=n,b;");
@@ -746,7 +759,7 @@ public final class StudioLoginBridge {
         return "@echo off\r\n"
                 + "C:\\windows\\regedit.exe /s " + STUDIO_PROTOCOL_REG_DOS + "\r\n"
                 + "cd /d \"" + dosDir + "\"\r\n"
-                + "start \"\" \"" + dosExePath + "\" \"" + escapedUri + "\"\r\n";
+                + "\"" + dosExePath + "\" \"" + escapedUri + "\"\r\n";
     }
 
     public static File writeAuthArtifacts(File containerRoot, String dosExePath, String version, String callbackUri) throws IOException {
@@ -757,6 +770,26 @@ public final class StudioLoginBridge {
         File batFile = new File(base, "studio-auth.bat");
         DeploymentFiles.write(batFile, buildAuthBatchScript(dosExePath, callbackUri));
         return batFile;
+    }
+
+    public static void onWindowMapped(XServerDisplayActivity activity, com.winlator.xserver.Window window) {
+        if (activity == null || window == null) return;
+        boolean isStudio = activity.getIntent() != null
+                && activity.getIntent().getBooleanExtra("studio_bridge_session", false);
+        if (!isStudio) return;
+        try {
+            if (window.isRenderable() && !window.isDesktopWindow() && !window.hasNoDecorations()) {
+                com.winlator.xserver.Window parent = window.getParent();
+                if (parent != null) {
+                    parent.moveChildAbove(window, null);
+                }
+                long handle = window.getHandle();
+                WinHandler winHandler = activity.getWinHandler();
+                if (winHandler != null && handle > 0) {
+                    winHandler.bringToFront(window.getClassName(), handle);
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     public static void markAwaitingExternalAuth() {
@@ -947,7 +980,34 @@ public final class StudioLoginBridge {
                 .show();
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private static final String JS_OAUTH_INTERCEPTOR =
+            "(function(){"
+            + "if(window.__studioBridgeHooked)return;window.__studioBridgeHooked=true;"
+            + "function checkUrl(u){"
+            + "  if(typeof u==='string'&&(u.toLowerCase().indexOf('roblox-studio-auth:')===0||u.toLowerCase().indexOf('roblox-studio:')===0||u.toLowerCase().indexOf('scheme=roblox-studio')!==-1)){"
+            + "    if(window.StudioAuthBridge&&window.StudioAuthBridge.onCallbackUri){window.StudioAuthBridge.onCallbackUri(u);return true;}"
+            + "  }"
+            + "  return false;"
+            + "}"
+            + "var origOpen=window.open;"
+            + "window.open=function(u){if(checkUrl(u))return null;return origOpen?origOpen.apply(this,arguments):null;};"
+            + "var origAssign=window.location.assign;"
+            + "if(origAssign){window.location.assign=function(u){if(checkUrl(u))return;return origAssign.apply(this,arguments);};}"
+            + "var origReplace=window.location.replace;"
+            + "if(origReplace){window.location.replace=function(u){if(checkUrl(u))return;return origReplace.apply(this,arguments);};}"
+            + "document.addEventListener('click',function(e){"
+            + "  var a=e.target&&e.target.closest?e.target.closest('a'):null;"
+            + "  if(a&&a.href&&checkUrl(a.href)){e.preventDefault();}"
+            + "},true);"
+            + "setInterval(function(){"
+            + "  var iframes=document.querySelectorAll('iframe');"
+            + "  for(var i=0;i<iframes.length;i++){if(iframes[i].src)checkUrl(iframes[i].src);}"
+            + "  var links=document.querySelectorAll('a[href^=\"roblox-studio\"]');"
+            + "  for(var j=0;j<links.length;j++){if(links[j].href)checkUrl(links[j].href);}"
+            + "},250);"
+            + "})();";
+
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     public static void showInAppLoginDialog(XServerDisplayActivity activity, String startUrl) {
         if (activity == null || activity.isDestroyed()) return;
         dismissActiveLoginDialog();
@@ -1016,6 +1076,18 @@ public final class StudioLoginBridge {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void onCallbackUri(final String url) {
+                if (isStudioCallbackUri(url)) {
+                    activity.runOnUiThread(() -> {
+                        CookieManager.getInstance().flush();
+                        deliverAuthCallback(activity, url);
+                    });
+                }
+            }
+        }, "StudioAuthBridge");
+
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
@@ -1037,6 +1109,33 @@ public final class StudioLoginBridge {
                     return false;
                 }
                 return true;
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (isStudioCallbackUri(url)) {
+                    CookieManager.getInstance().flush();
+                    deliverAuthCallback(activity, url);
+                    return;
+                }
+                super.onPageStarted(view, url, favicon);
+                view.evaluateJavascript(JS_OAUTH_INTERCEPTOR, null);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                view.evaluateJavascript(JS_OAUTH_INTERCEPTOR, null);
+            }
+
+            @Override
+            public void onLoadResource(WebView view, String url) {
+                if (isStudioCallbackUri(url)) {
+                    CookieManager.getInstance().flush();
+                    deliverAuthCallback(activity, url);
+                    return;
+                }
+                super.onLoadResource(view, url);
             }
 
             @Override
