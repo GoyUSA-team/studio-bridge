@@ -178,6 +178,27 @@ index 1262c0d..1a2c9f2 100644
  
          <activity android:name="com.winlator.ControlsEditorActivity"
              android:exported="false"
+diff --git a/app/src/main/java/com/winlator/MainActivity.java b/app/src/main/java/com/winlator/MainActivity.java
+index dd126b1..98f5cb3 100644
+--- a/app/src/main/java/com/winlator/MainActivity.java
++++ b/app/src/main/java/com/winlator/MainActivity.java
+@@ -63,8 +63,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
+ 
+         preferences = PreferenceManager.getDefaultSharedPreferences(this);
+ 
+-        Intent intent = getIntent();
+-        editInputControls = intent.getBooleanExtra("edit_input_controls", false);
++        Intent hubIntent = new Intent(this, com.winlator.studiobridge.StudioHubActivity.class);
++        if (intent != null && intent.getData() != null) {
++            hubIntent.setData(intent.getData());
++        }
++        hubIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
++        startActivity(hubIntent);
++        finish();
++        if (true) return;
+         if (editInputControls) {
+             selectedProfileId = intent.getIntExtra("selected_profile_id", 0);
+             actionBar.setHomeAsUpIndicator(R.drawable.icon_action_bar_back);
 diff --git a/app/src/main/java/com/winlator/SettingsFragment.java b/app/src/main/java/com/winlator/SettingsFragment.java
 index 3bb2d01..5013711 100644
 --- a/app/src/main/java/com/winlator/SettingsFragment.java
@@ -196,7 +217,7 @@ index 3bb2d01..5013711 100644
              cbEnableBackgroundWakelock.setVisibility(isChecked ? View.VISIBLE : View.GONE);
              if (!isChecked) cbEnableBackgroundWakelock.setChecked(false);
 diff --git a/app/src/main/java/com/winlator/XServerDisplayActivity.java b/app/src/main/java/com/winlator/XServerDisplayActivity.java
-index 53fb456..da7595c 100644
+index 53fb456..90fb4e2 100644
 --- a/app/src/main/java/com/winlator/XServerDisplayActivity.java
 +++ b/app/src/main/java/com/winlator/XServerDisplayActivity.java
 @@ -129,6 +129,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
@@ -276,18 +297,52 @@ index 53fb456..da7595c 100644
          winHandler.stop();
          if (environment != null) environment.stopEnvironmentComponents();
          ForegroundService.stopSession(this);
-@@ -485,6 +507,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -423,7 +445,21 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+         return preferences;
+     }
+ 
+-    private void exit() {
++    public void showActiveWindows() {
++        runOnUiThread(() -> (new ActiveWindowsDialog(this)).show());
++    }
++
++    public void showTaskManager() {
++        runOnUiThread(() -> (new TaskManagerDialog(this)).show());
++    }
++
++    public void showDebugLogs() {
++        runOnUiThread(() -> {
++            if (debugDialog != null) debugDialog.show();
++        });
++    }
++
++    public void exit() {
+         winHandler.stop();
+         if (environment != null) environment.stopEnvironmentComponents();
+ 
+@@ -485,6 +521,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
              containerDataChanged = true;
          }
  
 +        if (getIntent().getBooleanExtra("studio_bridge_session", false)) {
-+            com.winlator.studiobridge.StudioLoginBridge.configureWineRegistry(container);
++            com.winlator.studiobridge.StudioLoginBridge.prepareStudioEnvironment(this, rootFS, container);
 +        }
 +
          if (containerDataChanged) container.saveData();
      }
  
-@@ -619,6 +645,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+@@ -551,6 +591,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+             environment.addComponent(new VirGLRendererComponent(xServer, UnixSocketConfig.create(rootPath, UnixSocketConfig.VIRGL_SERVER_PATH)));
+         }
+ 
++        if (getIntent().getBooleanExtra("studio_bridge_session", false)) {
++            com.winlator.studiobridge.StudioLoginBridge.applyStudioEnvVars(this, container, envVars);
++        }
++
+         guestProgramLauncherComponent.setEnvVars(envVars);
+         guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
+         environment.addComponent(guestProgramLauncherComponent);
+@@ -619,6 +663,18 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
              }
          }
  
@@ -306,6 +361,51 @@ index 53fb456..da7595c 100644
          if (MainActivity.DEBUG_MODE) rootView.addView(AppUtils.createDebugMsgTextView(this));
          AppUtils.observeSoftKeyboardVisibility(drawerLayout, renderer::setScreenOffsetYRelativeToCursor);
      }
+@@ -801,6 +857,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+         return inputControlsView;
+     }
+ 
++    public TouchpadView getTouchpadView() {
++        return touchpadView;
++    }
++
++    public void setGlobalCursorSpeed(float speed) {
++        this.globalCursorSpeed = speed;
++        if (touchpadView != null) touchpadView.setSensitivity(speed);
++    }
++
+     private boolean extractDXWrapperFiles() {
+         String cacheId = "";
+         if (dxwrapper.equals(DXWrappers.DXVK)) {
+@@ -854,7 +919,12 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
+             if (!hasD3D10DllFile[0]) restoreBuiltinDllFiles("d3d10.dll", "d3d10_1.dll");
+         }
+ 
+-        GeneralComponents.extractFile(GeneralComponents.Type.VKD3D, this, dxwrapperConfig[1].get("version"), DefaultVersion.VKD3D);
++        if (getIntent().getBooleanExtra("studio_bridge_session", false)) {
++            restoreBuiltinDllFiles("d3d12.dll", "d3d12core.dll");
++        }
++        else {
++            GeneralComponents.extractFile(GeneralComponents.Type.VKD3D, this, dxwrapperConfig[1].get("version"), DefaultVersion.VKD3D);
++        }
+ 
+         File containerSysWoW64Dir = new File(rootDir, RootFS.WINEPREFIX+"/drive_c/windows/syswow64");
+         FileUtils.delete(new File(containerSysWoW64Dir, "ddraw_.dll"));
+diff --git a/app/src/main/java/com/winlator/contentdialog/DXVKConfigDialog.java b/app/src/main/java/com/winlator/contentdialog/DXVKConfigDialog.java
+index 5ce355a..aaa850a 100644
+--- a/app/src/main/java/com/winlator/contentdialog/DXVKConfigDialog.java
++++ b/app/src/main/java/com/winlator/contentdialog/DXVKConfigDialog.java
+@@ -113,6 +113,10 @@ public class DXVKConfigDialog extends ContentDialog {
+             content += "d3d9.customDeviceDesc = \""+parts[2]+"\"\n";
+         }
+ 
++        content += "dxgi.deferSurfaceCreation = True\n";
++        content += "dxvk.enableGraphicsPipelineLibrary = False\n";
++        content += "dxvk.numCompilerThreads = 2\n";
++        content += "d3d11.relaxedBarriers = True\n";
+         content += "d3d11.constantBufferRangeCheck = \"True\"\n\n";
+ 
+         content += "[GTA5.exe]\n";
 diff --git a/app/src/main/java/com/winlator/core/FileUtils.java b/app/src/main/java/com/winlator/core/FileUtils.java
 index b503fc0..b1b872b 100644
 --- a/app/src/main/java/com/winlator/core/FileUtils.java
@@ -334,7 +434,7 @@ index 4651b83..e2284b8 100644
          }
  
 diff --git a/app/src/main/java/com/winlator/services/ForegroundService.java b/app/src/main/java/com/winlator/services/ForegroundService.java
-index 0940581..32367be 100644
+index 0940581..d49d778 100644
 --- a/app/src/main/java/com/winlator/services/ForegroundService.java
 +++ b/app/src/main/java/com/winlator/services/ForegroundService.java
 @@ -64,7 +64,7 @@ public class ForegroundService extends Service {
@@ -385,7 +485,7 @@ index 0940581..32367be 100644
  
          if (!hasReason()) {
              Log.d(TAG, "onStartCommand found no active reason; stopping immediately");
-@@ -268,7 +277,7 @@ public class ForegroundService extends Service {
+@@ -268,18 +277,18 @@ public class ForegroundService extends Service {
              stopSelf();
              serviceRunning.set(false);
          }
@@ -394,6 +494,20 @@ index 0940581..32367be 100644
      }
  
      private void ensureForeground() {
+         boolean containerActive = sessionActive.get();
+ 
+-        // Determine target activity: Game screen if active, else Main menu
+-        Class<?> targetActivity = containerActive ? XServerDisplayActivity.class : MainActivity.class;
++        // Determine target activity: Game screen if active, else Studio Bridge Hub
++        Class<?> targetActivity = containerActive ? XServerDisplayActivity.class : com.winlator.studiobridge.StudioHubActivity.class;
+ 
+         Notification n = notificationUtils.createForegroundNotification(
+                 getNotificationContent(),
+-                "Winlator",
++                "Studio Bridge",
+                 XServerDisplayActivity.class, // Service class for the 'Exit' action
+                 null, // Exit action here, not used because might cause issues
+                 targetActivity // Activity class for the 'Open' (notification tap) action
 @@ -299,6 +308,7 @@ public class ForegroundService extends Service {
                  else {
                      startForeground(notificationId, n);
@@ -412,6 +526,36 @@ index 0940581..32367be 100644
          if (!wakeLock.isHeld()) {
              wakeLock.acquire();
              Log.d(TAG, "WakeLock acquired");
+diff --git a/app/src/main/java/com/winlator/services/NotificationUtils.java b/app/src/main/java/com/winlator/services/NotificationUtils.java
+index c3f422c..16729df 100644
+--- a/app/src/main/java/com/winlator/services/NotificationUtils.java
++++ b/app/src/main/java/com/winlator/services/NotificationUtils.java
+@@ -59,7 +59,7 @@ public class NotificationUtils {
+      * Sends or updates a notification with all parameters.
+      */
+     public void notify(int id, String content, String title, Class<?> serviceClass, String exitAction) {
+-        Notification notification = createForegroundNotification(content, title, serviceClass, exitAction, MainActivity.class);
++        Notification notification = createForegroundNotification(content, title, serviceClass, exitAction, com.winlator.studiobridge.StudioHubActivity.class);
+         notificationManager.notify(id, notification);
+     }
+ 
+@@ -115,14 +115,14 @@ public class NotificationUtils {
+      * Overload of createForegroundNotification() with default target activity.
+      */
+     public Notification createForegroundNotification(String content, String title, Class<?> serviceClass, String exitAction) {
+-        return createForegroundNotification(content, title, serviceClass, exitAction, MainActivity.class);
++        return createForegroundNotification(content, title, serviceClass, exitAction, com.winlator.studiobridge.StudioHubActivity.class);
+     }
+ 
+     /**
+      * Overload of createForegroundNotification() with default title and target activity.
+      */
+     public Notification createForegroundNotification(String content, String title) {
+-        return createForegroundNotification(content, title, null, null, MainActivity.class);
++        return createForegroundNotification(content, title, null, null, com.winlator.studiobridge.StudioHubActivity.class);
+     }
+ 
+     /**
 diff --git a/app/src/main/java/com/winlator/studiobridge/DeploymentFiles.java b/app/src/main/java/com/winlator/studiobridge/DeploymentFiles.java
 new file mode 100644
 index 0000000..3783042
@@ -676,177 +820,1290 @@ index 0000000..edcb1e9
 +}
 diff --git a/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java b/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java
 new file mode 100644
-index 0000000..aa17894
+index 0000000..3e6073b
 --- /dev/null
 +++ b/app/src/main/java/com/winlator/studiobridge/StudioHubActivity.java
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,1274 @@
 +/* Studio Bridge additions, 2026. LGPL-2.1-or-later. */
 +package com.winlator.studiobridge;
 +
 +import android.app.ProgressDialog;
++import android.content.Context;
 +import android.content.Intent;
++import android.content.SharedPreferences;
 +import android.content.pm.ActivityInfo;
++import android.content.pm.PackageManager;
 +import android.graphics.Color;
++import android.graphics.Typeface;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.LayerDrawable;
++import android.os.Build;
 +import android.os.Bundle;
++import android.view.Gravity;
 +import android.view.View;
-+import android.widget.*;
++import android.view.ViewGroup;
++import android.widget.AdapterView;
++import android.widget.ArrayAdapter;
++import android.widget.Button;
++import android.widget.CheckBox;
++import android.widget.LinearLayout;
++import android.widget.ScrollView;
++import android.widget.Spinner;
++import android.widget.TextView;
++import android.widget.Toast;
++
++import androidx.annotation.NonNull;
++import androidx.annotation.Nullable;
 +import androidx.appcompat.app.AlertDialog;
 +import androidx.appcompat.app.AppCompatActivity;
 +import androidx.preference.PreferenceManager;
-+import com.winlator.MainActivity;
++
 +import com.winlator.XServerDisplayActivity;
-+import com.winlator.container.*;
 +import com.winlator.box64.Box64Preset;
++import com.winlator.container.AudioDrivers;
++import com.winlator.container.Container;
++import com.winlator.container.ContainerManager;
++import com.winlator.container.DXWrappers;
++import com.winlator.container.GraphicsDrivers;
++import com.winlator.widget.FrameRating;
 +import com.winlator.xenvironment.RootFS;
 +import com.winlator.xenvironment.RootFSInstaller;
-+import org.json.JSONObject;
-+import java.io.File;
-+import java.util.*;
-+import java.util.concurrent.*;
 +
-+/** A purpose-built experimental setup screen. It does not claim Studio compatibility. */
++import org.json.JSONObject;
++
++import java.io.File;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++/**
++ * Self-contained Studio Bridge Control Center & Launcher.
++ * Handles runtime installation, container creation, Roblox Studio deployment, and all graphics/Wine
++ * settings directly without ever sending the user to Winlator's MainActivity.
++ */
 +public class StudioHubActivity extends AppCompatActivity {
-+    public static final String DISCLAIMER="Unofficial, fan-made experiment toward a Roblox Studio Android port. Not affiliated with, endorsed by, or associated with Roblox Corporation. Use at your own risk. This is a Winlator-based compatibility experiment, not a native Studio port; successful launch is unverified.";
-+    private final List<Container> containers=new ArrayList<>();
-+    private Spinner containerPicker,profilePicker,resolutionPicker;
-+    private TextView status;
-+    private LinearLayout column;
++    public static final String DISCLAIMER =
++            "Unofficial, fan-made experiment toward a Roblox Studio Android port. Not affiliated with, endorsed by, or associated with Roblox Corporation. Use at your own risk.";
++
++    private static final int COLOR_TEXT_PRIMARY = 0xfff8fafc;
++    private static final int COLOR_TEXT_SECONDARY = 0xff94a3b8;
++    private static final int COLOR_ACCENT_CYAN = 0xff38bdf8;
++    private static final int COLOR_ACCENT_BLUE = 0xff3b82f6;
++    private static final int COLOR_ACCENT_EMERALD = 0xff10b981;
++
++    private static final int BTN_PRIMARY = 0;
++    private static final int BTN_SUCCESS = 1;
++    private static final int BTN_SECONDARY = 2;
++    private static final int BTN_DANGER = 3;
++
++    private static final String[] GRAPHICS_PRESET_KEYS = new String[]{
++            "DXVK_1103_VORTEK",
++            "DXVK_241_VORTEK",
++            "DXVK_241_TURNIP",
++            "DXVK_1103_TURNIP",
++            "WINED3D_VIRGL",
++            "WINED3D_ZINK",
++            "VULKAN_NATIVE"
++    };
++    private static final String[] GRAPHICS_PRESET_LABELS = new String[]{
++            "DXVK 1.10.3 · Vortek Vulkan (Recommended Universal DXVK)",
++            "DXVK 2.4.1 · Vortek Vulkan (Vulkan 1.3+ System Driver)",
++            "DXVK 2.4.1 · Turnip Vulkan (Snapdragon / Adreno GPU)",
++            "DXVK 1.10.3 · Turnip Vulkan (Older Adreno GPU)",
++            "WineD3D · VirGL OpenGL (Compatibility Fallback)",
++            "WineD3D · Zink (OpenGL over Vulkan)",
++            "Native Vulkan · Direct (No DXVK Wrapper)"
++    };
++
++    private static final String[] RENDERER_KEYS = new String[]{"Auto", "D3D11", "Vulkan", "OpenGL"};
++    private static final String[] RENDERER_LABELS = new String[]{
++            "Auto · D3D11 for DXVK/WineD3D, Vulkan for Native (Recommended)",
++            "Force Direct3D 11 · FFlagDebugGraphicsPreferD3D11",
++            "Force Vulkan · FFlagDebugGraphicsPreferVulkan",
++            "Force OpenGL · FFlagDebugGraphicsPreferOpenGL"
++    };
++
++    private static final String[] RESOLUTION_KEYS = new String[]{
++            "1280x720", "1600x900", "1920x1080", "1440x900", "1024x768", "960x540"
++    };
++    private static final String[] RESOLUTION_LABELS = new String[]{
++            "1280x720 · 16:9 HD (Recommended Workspace)",
++            "1600x900 · 16:9 HD+ (Sharp UI)",
++            "1920x1080 · 16:9 Full HD (Desktop Grade)",
++            "1440x900 · 16:10 Widescreen",
++            "1024x768 · 4:3 Compact",
++            "960x540 · 16:9 qHD (Maximum Performance)"
++    };
++
++    private static final String[] BOX64_KEYS = new String[]{
++            Box64Preset.STABILITY,
++            Box64Preset.INTERMEDIATE,
++            Box64Preset.PERFORMANCE,
++            Box64Preset.COMPATIBILITY
++    };
++    private static final String[] BOX64_LABELS = new String[]{
++            "Stability · Safe JIT (Recommended for Studio)",
++            "Intermediate · Balanced JIT",
++            "Performance · Fast JIT",
++            "Compatibility · Strict Emulation"
++    };
++
++    private static final String[] VRAM_KEYS = new String[]{"4096", "2048", "1024", "0"};
++    private static final String[] VRAM_LABELS = new String[]{
++            "4096 MB (4 GB · Recommended)",
++            "2048 MB (2 GB)",
++            "1024 MB (1 GB · Low Memory Devices)",
++            "Unlimited (Host Reported)"
++    };
++
++    private static final String[] FPS_KEYS = new String[]{"0", "60", "45", "30"};
++    private static final String[] FPS_LABELS = new String[]{
++            "Unlimited (No Cap)",
++            "60 FPS Cap",
++            "45 FPS Cap",
++            "30 FPS Battery Saver"
++    };
++
++    private static final String[] AUDIO_KEYS = new String[]{AudioDrivers.ALSA, AudioDrivers.PULSEAUDIO};
++    private static final String[] AUDIO_LABELS = new String[]{
++            "ALSA · Low-Latency Native Audio (Recommended)",
++            "PulseAudio · Compatibility Server"
++    };
++
++    private static final int[] DPI_VALUES = new int[]{98, 120, 144};
++    private static final String[] DPI_LABELS = new String[]{
++            "98 DPI · Standard + Splash Hang Fix (Recommended)",
++            "120 DPI · 125% Medium UI Scale",
++            "144 DPI · 150% Large UI Scale"
++    };
++
++    private static final float[] CURSOR_SPEED_VALUES = new float[]{0.5f, 0.7f, 1.0f, 1.3f, 1.6f};
++    private static final String[] CURSOR_SPEED_LABELS = new String[]{
++            "0.5x · Precision Slow",
++            "0.7x · Studio Default",
++            "1.0x · Standard Speed",
++            "1.3x · Fast",
++            "1.6x · Ultra Fast"
++    };
++
++    private static final float[] CURSOR_SCALE_VALUES = new float[]{1.0f, 1.4f, 1.8f};
++    private static final String[] CURSOR_SCALE_LABELS = new String[]{
++            "1.0x · Standard Pointer",
++            "1.4x · Medium Pointer (Recommended)",
++            "1.8x · Large High-Visibility Pointer"
++    };
++
++    private final List<Container> containers = new ArrayList<>();
++    private SharedPreferences studioPrefs;
++    private SharedPreferences winlatorPrefs;
++
++    private TextView runtimeBadgeText;
++    private TextView containerBadgeText;
++    private TextView studioVersionBadgeText;
++    private TextView statusBanner;
++
++    private Spinner containerPicker;
++    private Spinner graphicsPresetSpinner;
++    private Spinner rendererSpinner;
++    private Spinner resolutionSpinner;
++    private Spinner box64Spinner;
++    private Spinner vramSpinner;
++    private Spinner fpsSpinner;
++    private Spinner audioSpinner;
++    private Spinner dpiSpinner;
++    private Spinner cursorSpeedSpinner;
++    private Spinner cursorScaleSpinner;
++
++    private CheckBox cbKernelbasePatch;
++    private CheckBox cbMimallocFix;
++    private CheckBox cbDisableDxdiagn;
++    private CheckBox cbWebview2Fix;
++    private CheckBox cbDxvkAsync;
++    private CheckBox cbDarkTheme;
++    private CheckBox cbTouchpointCursor;
++    private CheckBox cbShowFpsHud;
++    private CheckBox cbBackgroundKeepAlive;
++    private CheckBox cbWineDebug;
++
 +    private boolean busy;
++    private boolean suppressSpinnerEvents;
 +    private StudioDeployment deployment;
-+    private final ExecutorService executor=Executors.newSingleThreadExecutor();
++    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 +    private ProgressDialog progress;
 +    private int previousOrientation;
-+    private static final int TEXT=0xffeeeeed, SECONDARY=0xffbebebc;
 +
-+    @Override public void onCreate(Bundle state) {
-+        super.onCreate(state);getWindow().setStatusBarColor(0xff191919);getWindow().setNavigationBarColor(0xff191919);
-+        android.content.SharedPreferences initPrefs=PreferenceManager.getDefaultSharedPreferences(this);
-+        initPrefs.edit().putBoolean("enable_background_protection",true).putBoolean("enable_background_wakelock",true).apply();
-+        if(android.os.Build.VERSION.SDK_INT>=33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=android.content.pm.PackageManager.PERMISSION_GRANTED){
-+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},1001);
++    @Override
++    public void onCreate(Bundle state) {
++        super.onCreate(state);
++        getWindow().setStatusBarColor(0xff06090f);
++        getWindow().setNavigationBarColor(0xff06090f);
++
++        studioPrefs = getSharedPreferences(StudioLoginBridge.PREFS_NAME, Context.MODE_PRIVATE);
++        winlatorPrefs = PreferenceManager.getDefaultSharedPreferences(this);
++        ensureDefaultPreferences();
++
++        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
++            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1001);
 +        }
-+        ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(0xff191919);
-+        column=new LinearLayout(this);column.setOrientation(LinearLayout.VERTICAL);column.setPadding(dp(20),dp(24),dp(20),dp(32));scroll.addView(column);setContentView(scroll);
-+        text("STUDIO BRIDGE · EXPERIMENTAL",14,0xff87b8f0,12);
-+        text("A workspace, not a promise.",28,TEXT,16);
-+        text(DISCLAIMER,16,SECONDARY,24);
-+        text("1  Prepare the runtime",20,TEXT,8);
-+        text("Open Winlator once, allow its normal setup, then return here. No Roblox files are included in this app.",16,SECONDARY,8);
-+        button("Open Winlator setup / settings",()->startActivity(new Intent(this,MainActivity.class)));
-+        text("2  Create a dedicated Studio container",20,TEXT,8);
-+        text("These are test presets, not measured Mali optimizations. Compatibility uses VirGL + WineD3D; Vulkan uses Vortek + DXVK with the phone's system driver. Neither preset selects Turnip or fakes GPU capabilities.",16,SECONDARY,12);
-+        profilePicker=spinner(new String[]{"Compatibility · VirGL / WineD3D","Experimental Vulkan · Vortek / DXVK"});
-+        resolutionPicker=spinner(new String[]{"1280x720 · balanced workspace","960x540 · lower rendering load"});
-+        button("Create a new Studio container",this::createContainer);
-+        containerPicker=spinner(new String[]{"No Studio container yet"});
-+        button("Apply selected preset to this Studio container",this::confirmPreset);
-+        text("3  Download, then test",20,TEXT,8);
-+        text("Downloads come from Roblox's HTTPS deployment service. Allow several GB of free storage for the runtime, Studio, cache and projects. Installation success does not mean Studio will launch.",16,SECONDARY,12);
-+        button("Download / update Studio from Roblox",this::confirmInstall);
-+        button("Launch Studio · experimental",this::launchStudio);
-+        status=text("Checking local setup…",16,0xff87b8f0,16);
-+        button("Touch controls and troubleshooting",()->new AlertDialog.Builder(this).setTitle("Using the experiment").setMessage("Studio launches with a large-button toolbar: keyboard, undo, redo, save, Esc, F5 and held W/A/S/D/right mouse. Slide the toolbar horizontally. The desktop above remains a relative touchpad. Four-finger tap opens Winlator's session menu.\n\nIf the viewport is black or crashes, close the session and try the other graphics preset. No driver can guarantee support on every Mali model. Use Settings to enable Wine/Box64 logs, then use Logs in the session menu.\n\nStudio handles its own Roblox sign-in. This app does not request passwords, cookies, or tokens. Save local test files first; do not trust an untested session with important work.\n\nThis build currently retains Winlator's original Android package ID because its bundled native runtime has hardcoded paths. It is not a side-by-side install. Do not remove an existing Winlator installation or its data without a backup.").setPositiveButton("Close",null).show());
-+        text("Based on Winlator by brunodev85 and its contributors. Upstream licenses and credits are preserved. No association with Roblox Corporation.",14,SECONDARY,0);
++
++        // Proactively patch RootFS kernelbase.dll in background if runtime is already extracted
++        executor.execute(() -> {
++            try {
++                RootFS fs = RootFS.find(this);
++                if (fs.isValid()) {
++                    StudioLoginBridge.patchRootFSKernelbase(fs.getRootDir());
++                }
++            } catch (Exception ignored) {}
++        });
++
++        ScrollView scroll = new ScrollView(this);
++        GradientDrawable pageBg = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{0xff06090f, 0xff0d1526, 0xff080c14}
++        );
++        scroll.setBackground(pageBg);
++        scroll.setFillViewport(true);
++
++        LinearLayout rootColumn = new LinearLayout(this);
++        rootColumn.setOrientation(LinearLayout.VERTICAL);
++        rootColumn.setPadding(dp(16), dp(20), dp(16), dp(36));
++        scroll.addView(rootColumn);
++        setContentView(scroll);
++
++        buildHeaderSection(rootColumn);
++        buildQuickLaunchSection(rootColumn);
++        buildRuntimeAndContainerSection(rootColumn);
++        buildSettingsSection(rootColumn);
++        buildFooterSection(rootColumn);
++
++        loadSavedSettingsIntoViews();
++        refresh();
 +    }
-+    @Override public void onResume(){super.onResume();if(containerPicker!=null)refresh();}
-+    private void refresh() {
-+        int old=containerPicker.getSelectedItemPosition();containers.clear();
-+        for(Container c:new ContainerManager(this).getContainers())if(c.getExtra("studioBridge","0").equals("1"))containers.add(c);
-+        List<String> names=new ArrayList<>();for(Container c:containers)names.add(c.getName());if(names.isEmpty())names.add("No Studio container yet");
-+        containerPicker.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names));
-+        if(old>=0 && old<containers.size())containerPicker.setSelection(old);
-+        boolean ready=RootFS.find(this).isValid() && RootFS.find(this).getVersion()>=RootFSInstaller.LATEST_VERSION;
-+        status.setText(ready?"Runtime present. Studio launch and Mali rendering still require device testing.":"Runtime not ready. Complete step 1 before creating a container.");
++
++    @Override
++    public void onResume() {
++        super.onResume();
++        if (containerPicker != null) {
++            refresh();
++        }
 +    }
-+    private Container selected() {
-+        if(busy){message("Please wait","A setup task is still running.");return null;}
-+        int i=containerPicker.getSelectedItemPosition();
-+        if(i<0 || i>=containers.size()){message("Create a container first","Use step 2 to create a dedicated Studio container.");return null;}
-+        return containers.get(i);
++
++    private void ensureDefaultPreferences() {
++        if (!studioPrefs.getBoolean("prefs_initialized_v2", false)) {
++            studioPrefs.edit()
++                    .putBoolean("prefs_initialized_v2", true)
++                    .putString("pref_graphics_preset", "DXVK_1103_VORTEK")
++                    .putString("pref_studio_renderer", "Auto")
++                    .putString("pref_resolution", "1280x720")
++                    .putString("pref_box64_preset", Box64Preset.STABILITY)
++                    .putString("pref_vram_mb", "4096")
++                    .putString("pref_fps_cap", "0")
++                    .putString("pref_audio_driver", AudioDrivers.ALSA)
++                    .putInt("pref_wine_dpi", 98)
++                    .putFloat("pref_cursor_speed", 0.7f)
++                    .putFloat("pref_cursor_scale", 1.4f)
++                    .putBoolean("pref_kernelbase_patch", true)
++                    .putBoolean("pref_mimalloc_fix", true)
++                    .putBoolean("pref_disable_dxdiagn", true)
++                    .putBoolean("pref_webview2_fix", true)
++                    .putBoolean("pref_dxvk_async", true)
++                    .putBoolean("pref_dark_theme", true)
++                    .putBoolean("pref_touchpoint_cursor", false)
++                    .putBoolean("pref_show_fps_hud", false)
++                    .putBoolean("pref_bg_keepalive", true)
++                    .putBoolean("pref_wine_debug", false)
++                    .apply();
++        }
++        winlatorPrefs.edit()
++                .putBoolean("enable_background_protection", studioPrefs.getBoolean("pref_bg_keepalive", true))
++                .putBoolean("enable_background_wakelock", studioPrefs.getBoolean("pref_bg_keepalive", true))
++                .putFloat("cursor_speed", studioPrefs.getFloat("pref_cursor_speed", 0.7f))
++                .putFloat("cursor_scale", studioPrefs.getFloat("pref_cursor_scale", 1.4f))
++                .putBoolean("move_cursor_to_touchpoint", studioPrefs.getBoolean("pref_touchpoint_cursor", false))
++                .putBoolean("enable_wine_debug", studioPrefs.getBoolean("pref_wine_debug", false))
++                .apply();
 +    }
-+    private JSONObject preset() throws Exception {
-+        boolean vulkan=profilePicker.getSelectedItemPosition()==1;JSONObject data=new JSONObject();
-+        data.put("screenSize",resolutionPicker.getSelectedItemPosition()==1?"960x540":"1280x720");
-+        data.put("graphicsDriver","vortek,virgl");data.put("graphicsDriverConfig", "|");
-+        data.put("dxwrapper",vulkan?DXWrappers.DXVK:DXWrappers.WINED3D);data.put("dxwrapperConfig","");
-+        data.put("envVars","MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=256MB WINEESYNC=1");
-+        data.put("box64Preset",Box64Preset.STABILITY);data.put("startupSelection",Container.STARTUP_SELECTION_NORMAL);
-+        data.put("wincomponents",Container.DEFAULT_WINCOMPONENTS);
++
++    private void buildHeaderSection(LinearLayout parent) {
++        LinearLayout card = createCard(parent, 0xff0d1629, 0xff090f1d, 0xff2563eb);
++
++        TextView tag = createLabel("STUDIO BRIDGE // PRO CONTROL CENTER", 11, COLOR_ACCENT_CYAN, true);
++        tag.setLetterSpacing(0.12f);
++        card.addView(tag, marginParams(0, 0, 0, 4));
++
++        TextView title = createLabel("ROBLOX STUDIO ENVIRONMENT", 24, COLOR_TEXT_PRIMARY, true);
++        title.setLetterSpacing(0.03f);
++        card.addView(title, marginParams(0, 0, 0, 6));
++
++        TextView subtitle = createLabel(
++                "Standalone Wine 10.10 + DXVK/Vortek Studio Engine with Kernelbase VirtualProtectFromApp Patch, Mimalloc Native UCRT Bridge & In-App OAuth Login.",
++                13, COLOR_TEXT_SECONDARY, false
++        );
++        card.addView(subtitle, marginParams(0, 0, 0, 14));
++
++        // Status Telemetry Grid
++        LinearLayout metricsRow = new LinearLayout(this);
++        metricsRow.setOrientation(LinearLayout.VERTICAL);
++        GradientDrawable metricsBg = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{0xff070b14, 0xff0b111e}
++        );
++        metricsBg.setCornerRadius(0f);
++        metricsBg.setStroke(dp(1), 0xff1e293b);
++        metricsRow.setBackground(metricsBg);
++        metricsRow.setPadding(dp(12), dp(10), dp(12), dp(10));
++
++        runtimeBadgeText = createLabel("RUNTIME ENGINE: CHECKING...", 12, COLOR_ACCENT_CYAN, true);
++        containerBadgeText = createLabel("ACTIVE CONTAINER: NONE", 12, COLOR_TEXT_PRIMARY, true);
++        studioVersionBadgeText = createLabel("STUDIO BUILD: NOT INSTALLED", 12, COLOR_ACCENT_EMERALD, true);
++
++        metricsRow.addView(runtimeBadgeText, marginParams(0, 0, 0, 4));
++        metricsRow.addView(containerBadgeText, marginParams(0, 0, 0, 4));
++        metricsRow.addView(studioVersionBadgeText);
++        card.addView(metricsRow, marginParams(0, 0, 0, 10));
++
++        statusBanner = createLabel("Initializing Studio Bridge workspace…", 13, COLOR_ACCENT_CYAN, false);
++        card.addView(statusBanner);
++    }
++
++    private void buildQuickLaunchSection(LinearLayout parent) {
++        LinearLayout card = createCard(parent, 0xff0c1424, 0xff080d18, 0xff10b981);
++
++        addSectionHeader(card, "01 // INSTANT LAUNCH & STUDIO DEPLOYMENT",
++                "Launch Roblox Studio directly with your saved DXVK & Wine compatibility patches, or download the latest Windows Studio build.");
++
++        addSharpButton(card, "LAUNCH ROBLOX STUDIO NOW", BTN_SUCCESS, this::launchStudio);
++        addSharpButton(card, "DOWNLOAD / UPDATE ROBLOX STUDIO", BTN_PRIMARY, this::confirmInstall);
++    }
++
++    private void buildRuntimeAndContainerSection(LinearLayout parent) {
++        LinearLayout card = createCard(parent, 0xff0b1220, 0xff080d18, 0xff3b82f6);
++
++        addSectionHeader(card, "02 // RUNTIME ENGINE & CONTAINER MANAGEMENT",
++                "Initialize or repair the embedded Wine rootfs and manage your dedicated Studio Bridge container directly here (no Winlator homepage required).");
++
++        addSharpButton(card, "INSTALL / REPAIR RUNTIME ENGINE (ROOTFS + PATCHES)", BTN_PRIMARY, this::installOrRepairRuntime);
++
++        addFieldLabel(card, "ACTIVE STUDIO BRIDGE CONTAINER");
++        containerPicker = createSharpSpinner(new String[]{"No Studio container yet"});
++        containerPicker.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
++            @Override
++            public void onItemSelected(AdapterView<?> parentView, View view, int position, long id) {
++                if (!suppressSpinnerEvents) {
++                    updateTelemetryBadges();
++                }
++            }
++
++            @Override
++            public void onNothingSelected(AdapterView<?> parentView) {}
++        });
++        card.addView(containerPicker, marginParams(0, 0, 0, 12));
++
++        LinearLayout btnRow = new LinearLayout(this);
++        btnRow.setOrientation(LinearLayout.HORIZONTAL);
++        Button createBtn = createSharpButtonView("CREATE NEW CONTAINER", BTN_SECONDARY, this::createContainer);
++        Button repairBtn = createSharpButtonView("APPLY FIXES & SYNC DLLS", BTN_SECONDARY, this::applyAllSettingsAndRepairContainer);
++        LinearLayout.LayoutParams lpLeft = new LinearLayout.LayoutParams(0, dp(50), 1f);
++        lpLeft.rightMargin = dp(6);
++        LinearLayout.LayoutParams lpRight = new LinearLayout.LayoutParams(0, dp(50), 1f);
++        lpRight.leftMargin = dp(6);
++        btnRow.addView(createBtn, lpLeft);
++        btnRow.addView(repairBtn, lpRight);
++        card.addView(btnRow, marginParams(0, 0, 0, 4));
++    }
++
++    private void buildSettingsSection(LinearLayout parent) {
++        LinearLayout card = createCard(parent, 0xff0b1220, 0xff080d18, 0xff38bdf8);
++
++        addSectionHeader(card, "03 // PROFESSIONAL GRAPHICS, DXVK & ENGINE SETTINGS",
++                "All settings below are automatically saved to Studio Bridge preferences and written into your container & ClientAppSettings.json.");
++
++        addFieldLabel(card, "GRAPHICS DRIVER & DXVK WRAPPER PRESET");
++        graphicsPresetSpinner = createSharpSpinner(GRAPHICS_PRESET_LABELS);
++        card.addView(graphicsPresetSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "ROBLOX STUDIO RENDERER OVERRIDE (ClientAppSettings.json)");
++        rendererSpinner = createSharpSpinner(RENDERER_LABELS);
++        card.addView(rendererSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "DISPLAY RESOLUTION");
++        resolutionSpinner = createSharpSpinner(RESOLUTION_LABELS);
++        card.addView(resolutionSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "BOX64 CPU TRANSLATION PROFILE");
++        box64Spinner = createSharpSpinner(BOX64_LABELS);
++        card.addView(box64Spinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "DXVK VIDEO MEMORY (VRAM) LIMIT");
++        vramSpinner = createSharpSpinner(VRAM_LABELS);
++        card.addView(vramSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "DXVK FRAME RATE CAP");
++        fpsSpinner = createSharpSpinner(FPS_LABELS);
++        card.addView(fpsSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "AUDIO BACKEND");
++        audioSpinner = createSharpSpinner(AUDIO_LABELS);
++        card.addView(audioSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "WINE DESKTOP DPI (SPLASH HANG WORKAROUND)");
++        dpiSpinner = createSharpSpinner(DPI_LABELS);
++        card.addView(dpiSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "TOUCHPAD CURSOR SENSITIVITY");
++        cursorSpeedSpinner = createSharpSpinner(CURSOR_SPEED_LABELS);
++        card.addView(cursorSpeedSpinner, marginParams(0, 0, 0, 12));
++
++        addFieldLabel(card, "CURSOR POINTER SCALE");
++        cursorScaleSpinner = createSharpSpinner(CURSOR_SCALE_LABELS);
++        card.addView(cursorScaleSpinner, marginParams(0, 0, 0, 16));
++
++        addFieldLabel(card, "SPLASH-SCREEN & RUNTIME STABILITY PATCHES");
++        cbKernelbasePatch = addStyledCheckbox(card,
++                "Patch Wine kernelbase.dll with VirtualProtectFromApp (Fixes Splash Screen Hang)", true);
++        cbMimallocFix = addStyledCheckbox(card,
++                "Sync Native UCRT/MSVC DLLs + MIMALLOC_FORCE_REDIRECT=1 (Fixes Allocator Crash)", true);
++        cbDisableDxdiagn = addStyledCheckbox(card,
++                "Disable dxdiagn.dll & Wine MenuBuilder (Prevents Startup DX Probe Freeze)", true);
++        cbWebview2Fix = addStyledCheckbox(card,
++                "Set msedgewebview2.exe to Windows 8 Mode (Prevents WebView2 Crash)", true);
++        cbDxvkAsync = addStyledCheckbox(card,
++                "Enable DXVK Async Pipeline Cache (Reduces Viewport Shader Stutter)", true);
++        cbDarkTheme = addStyledCheckbox(card,
++                "Force Windows Dark Theme Registry Keys for Studio UI", true);
++        cbTouchpointCursor = addStyledCheckbox(card,
++                "Move Cursor Directly to Touchpoint (Disable for Relative Trackpad Mode)", false);
++        cbShowFpsHud = addStyledCheckbox(card,
++                "Show On-Screen FPS & GPU Telemetry HUD Overlay", false);
++        cbBackgroundKeepAlive = addStyledCheckbox(card,
++                "Keep Studio Session Alive in Background + CPU WakeLock", true);
++        cbWineDebug = addStyledCheckbox(card,
++                "Enable Verbose Wine & Box64 Debug Logs (Session Menu -> Logs)", false);
++
++        View spacer = new View(this);
++        card.addView(spacer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)));
++
++        addSharpButton(card, "SAVE & APPLY ALL SETTINGS TO CONTAINER", BTN_PRIMARY, this::saveAndApplySettingsInteractive);
++        addSharpButton(card, "RESET SETTINGS TO RECOMMENDED DEFAULTS", BTN_DANGER, this::resetToRecommendedDefaults);
++    }
++
++    private void buildFooterSection(LinearLayout parent) {
++        LinearLayout card = createCard(parent, 0xff090e1a, 0xff070b14, 0xff334155);
++
++        addSectionHeader(card, "04 // DIAGNOSTICS & DOCUMENTATION",
++                "Review controls, inspect your active configuration, or read the project notice.");
++
++        addSharpButton(card, "TOUCH CONTROLS & TROUBLESHOOTING GUIDE", BTN_SECONDARY, () ->
++                message("Studio Bridge Controls & Troubleshooting",
++                        "• Bottom Command Bar: Provides instant access to LOGIN, KEYBOARD, PLAY F5, UNDO, REDO, SAVE, FOCUS F, ESC, held W/A/S/D movement, LOOK · HOLD (right mouse), WINDOWS, LOGS, and HUB / EXIT.\n\n"
++                                + "• Splash Screen Hang Fix: Studio Bridge automatically patches Wine 10.10's kernelbase.dll to export VirtualProtectFromApp, copies Studio's native UCRT/MSVC runtime DLLs for mimalloc, and configures ClientAppSettings.json so Studio does not hang on the splash screen.\n\n"
++                                + "• Graphics Presets: If DXVK 2.4.1 fails on your GPU's Vulkan driver, select 'DXVK 1.10.3 · Vortek Vulkan' or 'WineD3D · VirGL OpenGL' and tap SAVE & APPLY ALL SETTINGS.\n\n"
++                                + "• OAuth Sign-In: Tap LOGIN in the bottom bar during a session to sign in via the In-App OAuth Bridge or full-screen browser without Android split-screen.")
++        );
++
++        TextView credits = createLabel(
++                DISCLAIMER + "\n\nBased on Winlator by brunodev85 and contributors, with compatibility research from VinegarHQ / Kombucha. Upstream LGPL-2.1 licenses preserved.",
++                11, COLOR_TEXT_SECONDARY, false
++        );
++        card.addView(credits, marginParams(0, 6, 0, 0));
++    }
++
++    private void loadSavedSettingsIntoViews() {
++        suppressSpinnerEvents = true;
++        try {
++            setSpinnerByKey(graphicsPresetSpinner, GRAPHICS_PRESET_KEYS,
++                    studioPrefs.getString("pref_graphics_preset", "DXVK_1103_VORTEK"));
++            setSpinnerByKey(rendererSpinner, RENDERER_KEYS,
++                    studioPrefs.getString("pref_studio_renderer", "Auto"));
++            setSpinnerByKey(resolutionSpinner, RESOLUTION_KEYS,
++                    studioPrefs.getString("pref_resolution", "1280x720"));
++            setSpinnerByKey(box64Spinner, BOX64_KEYS,
++                    studioPrefs.getString("pref_box64_preset", Box64Preset.STABILITY));
++            setSpinnerByKey(vramSpinner, VRAM_KEYS,
++                    studioPrefs.getString("pref_vram_mb", "4096"));
++            setSpinnerByKey(fpsSpinner, FPS_KEYS,
++                    studioPrefs.getString("pref_fps_cap", "0"));
++            setSpinnerByKey(audioSpinner, AUDIO_KEYS,
++                    studioPrefs.getString("pref_audio_driver", AudioDrivers.ALSA));
++
++            int dpi = studioPrefs.getInt("pref_wine_dpi", 98);
++            int dpiIdx = 0;
++            for (int i = 0; i < DPI_VALUES.length; i++) {
++                if (DPI_VALUES[i] == dpi) {
++                    dpiIdx = i;
++                    break;
++                }
++            }
++            dpiSpinner.setSelection(dpiIdx);
++
++            float speed = studioPrefs.getFloat("pref_cursor_speed", 0.7f);
++            int speedIdx = 1;
++            for (int i = 0; i < CURSOR_SPEED_VALUES.length; i++) {
++                if (Math.abs(CURSOR_SPEED_VALUES[i] - speed) < 0.05f) {
++                    speedIdx = i;
++                    break;
++                }
++            }
++            cursorSpeedSpinner.setSelection(speedIdx);
++
++            float scale = studioPrefs.getFloat("pref_cursor_scale", 1.4f);
++            int scaleIdx = 1;
++            for (int i = 0; i < CURSOR_SCALE_VALUES.length; i++) {
++                if (Math.abs(CURSOR_SCALE_VALUES[i] - scale) < 0.05f) {
++                    scaleIdx = i;
++                    break;
++                }
++            }
++            cursorScaleSpinner.setSelection(scaleIdx);
++
++            cbKernelbasePatch.setChecked(studioPrefs.getBoolean("pref_kernelbase_patch", true));
++            cbMimallocFix.setChecked(studioPrefs.getBoolean("pref_mimalloc_fix", true));
++            cbDisableDxdiagn.setChecked(studioPrefs.getBoolean("pref_disable_dxdiagn", true));
++            cbWebview2Fix.setChecked(studioPrefs.getBoolean("pref_webview2_fix", true));
++            cbDxvkAsync.setChecked(studioPrefs.getBoolean("pref_dxvk_async", true));
++            cbDarkTheme.setChecked(studioPrefs.getBoolean("pref_dark_theme", true));
++            cbTouchpointCursor.setChecked(studioPrefs.getBoolean("pref_touchpoint_cursor", false));
++            cbShowFpsHud.setChecked(studioPrefs.getBoolean("pref_show_fps_hud", false));
++            cbBackgroundKeepAlive.setChecked(studioPrefs.getBoolean("pref_bg_keepalive", true));
++            cbWineDebug.setChecked(studioPrefs.getBoolean("pref_wine_debug", false));
++        } finally {
++            suppressSpinnerEvents = false;
++        }
++    }
++
++    private void persistSettingsFromViews() {
++        String graphicsPreset = pickKey(graphicsPresetSpinner, GRAPHICS_PRESET_KEYS, "DXVK_1103_VORTEK");
++        String studioRenderer = pickKey(rendererSpinner, RENDERER_KEYS, "Auto");
++        String resolution = pickKey(resolutionSpinner, RESOLUTION_KEYS, "1280x720");
++        String box64Preset = pickKey(box64Spinner, BOX64_KEYS, Box64Preset.STABILITY);
++        String vramMb = pickKey(vramSpinner, VRAM_KEYS, "4096");
++        String fpsCap = pickKey(fpsSpinner, FPS_KEYS, "0");
++        String audioDriver = pickKey(audioSpinner, AUDIO_KEYS, AudioDrivers.ALSA);
++
++        int dpiIdx = Math.max(0, Math.min(DPI_VALUES.length - 1, dpiSpinner.getSelectedItemPosition()));
++        int wineDpi = DPI_VALUES[dpiIdx];
++
++        int speedIdx = Math.max(0, Math.min(CURSOR_SPEED_VALUES.length - 1, cursorSpeedSpinner.getSelectedItemPosition()));
++        float cursorSpeed = CURSOR_SPEED_VALUES[speedIdx];
++
++        int scaleIdx = Math.max(0, Math.min(CURSOR_SCALE_VALUES.length - 1, cursorScaleSpinner.getSelectedItemPosition()));
++        float cursorScale = CURSOR_SCALE_VALUES[scaleIdx];
++
++        studioPrefs.edit()
++                .putBoolean("prefs_initialized_v2", true)
++                .putString("pref_graphics_preset", graphicsPreset)
++                .putString("pref_studio_renderer", studioRenderer)
++                .putString("pref_resolution", resolution)
++                .putString("pref_box64_preset", box64Preset)
++                .putString("pref_vram_mb", vramMb)
++                .putString("pref_fps_cap", fpsCap)
++                .putString("pref_audio_driver", audioDriver)
++                .putInt("pref_wine_dpi", wineDpi)
++                .putFloat("pref_cursor_speed", cursorSpeed)
++                .putFloat("pref_cursor_scale", cursorScale)
++                .putBoolean("pref_kernelbase_patch", cbKernelbasePatch.isChecked())
++                .putBoolean("pref_mimalloc_fix", cbMimallocFix.isChecked())
++                .putBoolean("pref_disable_dxdiagn", cbDisableDxdiagn.isChecked())
++                .putBoolean("pref_webview2_fix", cbWebview2Fix.isChecked())
++                .putBoolean("pref_dxvk_async", cbDxvkAsync.isChecked())
++                .putBoolean("pref_dark_theme", cbDarkTheme.isChecked())
++                .putBoolean("pref_touchpoint_cursor", cbTouchpointCursor.isChecked())
++                .putBoolean("pref_show_fps_hud", cbShowFpsHud.isChecked())
++                .putBoolean("pref_bg_keepalive", cbBackgroundKeepAlive.isChecked())
++                .putBoolean("pref_wine_debug", cbWineDebug.isChecked())
++                .apply();
++
++        winlatorPrefs.edit()
++                .putBoolean("enable_background_protection", cbBackgroundKeepAlive.isChecked())
++                .putBoolean("enable_background_wakelock", cbBackgroundKeepAlive.isChecked())
++                .putFloat("cursor_speed", cursorSpeed)
++                .putFloat("cursor_scale", cursorScale)
++                .putBoolean("move_cursor_to_touchpoint", cbTouchpointCursor.isChecked())
++                .putBoolean("enable_wine_debug", cbWineDebug.isChecked())
++                .apply();
++    }
++
++    private JSONObject buildContainerPresetJson() throws Exception {
++        persistSettingsFromViews();
++
++        String presetKey = studioPrefs.getString("pref_graphics_preset", "DXVK_1103_VORTEK");
++        String resolution = studioPrefs.getString("pref_resolution", "1280x720");
++        String box64 = studioPrefs.getString("pref_box64_preset", Box64Preset.STABILITY);
++        String vram = studioPrefs.getString("pref_vram_mb", "4096");
++        String fps = studioPrefs.getString("pref_fps_cap", "0");
++        String audio = studioPrefs.getString("pref_audio_driver", AudioDrivers.ALSA);
++        boolean showHud = studioPrefs.getBoolean("pref_show_fps_hud", false);
++
++        String graphicsDriver;
++        String dxWrapper;
++        String dxvkVersion;
++
++        switch (presetKey) {
++            case "DXVK_241_VORTEK":
++                graphicsDriver = GraphicsDrivers.VORTEK + "," + GraphicsDrivers.VIRGL;
++                dxWrapper = DXWrappers.DXVK;
++                dxvkVersion = "2.4.1";
++                break;
++            case "DXVK_241_TURNIP":
++                graphicsDriver = GraphicsDrivers.TURNIP + "," + GraphicsDrivers.ZINK;
++                dxWrapper = DXWrappers.DXVK;
++                dxvkVersion = "2.4.1";
++                break;
++            case "DXVK_1103_TURNIP":
++                graphicsDriver = GraphicsDrivers.TURNIP + "," + GraphicsDrivers.ZINK;
++                dxWrapper = DXWrappers.DXVK;
++                dxvkVersion = "1.10.3";
++                break;
++            case "WINED3D_VIRGL":
++                graphicsDriver = GraphicsDrivers.VORTEK + "," + GraphicsDrivers.VIRGL;
++                dxWrapper = DXWrappers.WINED3D;
++                dxvkVersion = "";
++                break;
++            case "WINED3D_ZINK":
++                graphicsDriver = GraphicsDrivers.VORTEK + "," + GraphicsDrivers.ZINK;
++                dxWrapper = DXWrappers.WINED3D;
++                dxvkVersion = "";
++                break;
++            case "VULKAN_NATIVE":
++                graphicsDriver = GraphicsDrivers.VORTEK + "," + GraphicsDrivers.VIRGL;
++                dxWrapper = DXWrappers.WINED3D;
++                dxvkVersion = "";
++                break;
++            case "DXVK_1103_VORTEK":
++            default:
++                graphicsDriver = GraphicsDrivers.VORTEK + "," + GraphicsDrivers.VIRGL;
++                dxWrapper = DXWrappers.DXVK;
++                dxvkVersion = "1.10.3";
++                break;
++        }
++
++        String dxWrapperConfig = "";
++        if (DXWrappers.DXVK.equals(dxWrapper)) {
++            dxWrapperConfig = "version=" + dxvkVersion + ",framerate=" + fps + ",maxDeviceMemory=" + vram + "|version=2.14.1";
++        }
++
++        String envVars = "ZINK_DESCRIPTORS=lazy MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB "
++                + "WINEESYNC=1 WINEFSYNC=1 WINE_LARGE_ADDRESS_AWARE=1 WINEBOOT_HIDE_DIALOG=1 MIMALLOC_FORCE_REDIRECT=1";
++
++        JSONObject data = new JSONObject();
++        data.put("screenSize", resolution);
++        data.put("graphicsDriver", graphicsDriver);
++        data.put("graphicsDriverConfig", "|");
++        data.put("dxwrapper", dxWrapper);
++        data.put("dxwrapperConfig", dxWrapperConfig);
++        data.put("audioDriver", audio);
++        data.put("envVars", envVars);
++        data.put("box64Preset", box64);
++        data.put("startupSelection", Container.STARTUP_SELECTION_NORMAL);
++        data.put("wincomponents", Container.DEFAULT_WINCOMPONENTS);
++        data.put("hudMode", showHud ? FrameRating.Mode.FULL.ordinal() : FrameRating.Mode.DISABLED.ordinal());
 +        return data;
 +    }
-+    private void createContainer() {
-+        if(busy)return;
-+        RootFS fs=RootFS.find(this);
-+        if(!fs.isValid() || fs.getVersion()<RootFSInstaller.LATEST_VERSION){message("Runtime required","Open Winlator setup, let system files finish installing, then return here.");return;}
++
++    private void applySettingsToContainerObject(Container c) throws Exception {
++        JSONObject p = buildContainerPresetJson();
++        c.setScreenSize(p.getString("screenSize"));
++        c.setGraphicsDriver(p.getString("graphicsDriver"));
++        c.setGraphicsDriverConfig(p.getString("graphicsDriverConfig"));
++        c.setDXWrapper(p.getString("dxwrapper"));
++        c.setDXWrapperConfig(p.getString("dxwrapperConfig"));
++        c.setAudioDriver(p.getString("audioDriver"));
++        c.setEnvVars(p.getString("envVars"));
++        c.setBox64Preset(p.getString("box64Preset"));
++        c.setStartupSelection((byte) p.getInt("startupSelection"));
++        c.setWinComponents(p.getString("wincomponents"));
++        c.setHUDMode((byte) p.getInt("hudMode"));
++        // Force Winlator to re-extract the selected DXVK version on next launch if changed
++        c.putExtra("dxwrapper", "");
++        c.saveData();
++
++        RootFS fs = RootFS.find(this);
++        if (cbKernelbasePatch.isChecked()) {
++            StudioLoginBridge.patchRootFSKernelbase(fs.getRootDir());
++            StudioLoginBridge.patchRootFSKernelbase(c.getRootDir());
++        }
++        StudioLoginBridge.configureWineRegistry(this, c);
++    }
++
++    private void saveAndApplySettingsInteractive() {
++        persistSettingsFromViews();
++        if (containers.isEmpty()) {
++            statusBanner.setText("Settings saved! Create a Studio container or tap Launch to initialize one.");
++            Toast.makeText(this, "All Studio Bridge settings saved.", Toast.LENGTH_SHORT).show();
++            updateTelemetryBadges();
++            return;
++        }
++        Container c = selected();
++        if (c == null) return;
 +        try {
-+            JSONObject data=preset();data.put("name","Studio Bridge "+(containers.size()+1));data.put("extraData",new JSONObject().put("studioBridge","1"));
-+            begin("Creating a dedicated container…",false);
-+            new ContainerManager(this).createContainerAsync(data,c->{
-+                if(isDestroyed())return;
-+                end();refresh();if(c==null){message("Container creation failed","No success was recorded. Check runtime installation and free space.");return;}
-+                for(int i=0;i<containers.size();i++)if(containers.get(i).id==c.id)containerPicker.setSelection(i);
-+                android.content.SharedPreferences prefs=PreferenceManager.getDefaultSharedPreferences(this);
-+                android.content.SharedPreferences.Editor edit=prefs.edit();
-+                if(!prefs.contains("cursor_scale"))edit.putFloat("cursor_scale",1.4f);
-+                if(!prefs.contains("cursor_speed"))edit.putFloat("cursor_speed",0.7f);
-+                if(!prefs.contains("move_cursor_to_touchpoint"))edit.putBoolean("move_cursor_to_touchpoint",false);
-+                edit.putBoolean("enable_background_protection",true);
-+                edit.putBoolean("enable_background_wakelock",true);
-+                edit.apply();status.setText("Dedicated container created. Download Studio next; compatibility is unverified.");
++            applySettingsToContainerObject(c);
++            updateTelemetryBadges();
++            statusBanner.setText("All settings & compatibility patches saved and applied to " + c.getName() + ".");
++            Toast.makeText(this, "Settings saved & applied to " + c.getName(), Toast.LENGTH_SHORT).show();
++        } catch (Exception e) {
++            message("Failed to apply settings", e.toString());
++        }
++    }
++
++    private void applyAllSettingsAndRepairContainer() {
++        Container c = selected();
++        if (c == null) return;
++        try {
++            applySettingsToContainerObject(c);
++            updateTelemetryBadges();
++            message("Container Patched & Synced",
++                    "Applied to " + c.getName() + ":\n"
++                            + "• Wine 10.10 kernelbase.dll VirtualProtectFromApp export patched\n"
++                            + "• Studio native UCRT & Mimalloc redirect DLLs synced to system32\n"
++                            + "• ClientAppSettings.json updated for selected renderer\n"
++                            + "• DXVK / Graphics & Box64 configuration saved");
++        } catch (Exception e) {
++            message("Repair failed", e.toString());
++        }
++    }
++
++    private void resetToRecommendedDefaults() {
++        studioPrefs.edit().clear().apply();
++        ensureDefaultPreferences();
++        loadSavedSettingsIntoViews();
++        if (!containers.isEmpty()) {
++            try {
++                Container c = containers.get(Math.max(0, containerPicker.getSelectedItemPosition()));
++                applySettingsToContainerObject(c);
++            } catch (Exception ignored) {}
++        }
++        updateTelemetryBadges();
++        statusBanner.setText("Restored recommended Studio Bridge defaults.");
++        Toast.makeText(this, "Restored recommended defaults.", Toast.LENGTH_SHORT).show();
++    }
++
++    private void installOrRepairRuntime() {
++        if (busy) return;
++        RootFSInstaller.install(this, () -> {
++            executor.execute(() -> {
++                RootFS fs = RootFS.find(this);
++                if (fs.isValid()) {
++                    StudioLoginBridge.patchRootFSKernelbase(fs.getRootDir());
++                }
++                runOnUiThread(() -> {
++                    if (isDestroyed()) return;
++                    refresh();
++                    if (fs.isValid() && containers.isEmpty()) {
++                        createContainer();
++                    }
++                });
 +            });
-+        }catch(Exception e){end();message("Cannot create container",e.toString());}
-+    }
-+    private void confirmPreset() {
-+        Container c=selected();if(c==null)return;
-+        new AlertDialog.Builder(this).setTitle("Apply experimental preset?").setMessage("This changes graphics, resolution, startup, environment and Box64 settings on "+c.getName()+". Existing non-Studio containers are never listed here. Close any running session first.").setNegativeButton("Cancel",null).setPositiveButton("Apply",(d,w)->{
-+            try{JSONObject p=preset();c.setScreenSize(p.getString("screenSize"));c.setGraphicsDriver(p.getString("graphicsDriver"));c.setGraphicsDriverConfig(p.getString("graphicsDriverConfig"));c.setDXWrapper(p.getString("dxwrapper"));c.setDXWrapperConfig("");c.setEnvVars(p.getString("envVars"));c.setBox64Preset(Box64Preset.STABILITY);c.setStartupSelection(Container.STARTUP_SELECTION_NORMAL);c.saveData();status.setText("Preset saved. Restart the Studio session to test it.");}
-+            catch(Exception e){message("Preset failed",e.toString());}
-+        }).show();
-+    }
-+    private void confirmInstall() {
-+        Container c=selected();if(c==null)return;
-+        new AlertDialog.Builder(this).setTitle("Download Studio from Roblox?").setMessage("This downloads and extracts Roblox's Windows Studio packages into the dedicated container. Package sizes vary; several GB of free storage are recommended. No Roblox files are bundled or redistributed by this APK. Close any running Studio session first.\n\n"+DISCLAIMER).setNegativeButton("Cancel",null).setPositiveButton("Download",(d,w)->install(c)).show();
-+    }
-+    private void install(Container c) {
-+        begin("Checking release…",true);
-+        deployment=new StudioDeployment((msg,pct)->runOnUiThread(()->{if(progress!=null && !isDestroyed()){progress.setMessage(msg);progress.setProgress(pct);}}));
-+        final StudioDeployment task=deployment;
-+        executor.execute(()->{
-+            String result;
-+            try{File exe=task.install(c.getRootDir(),getCacheDir());result="Studio packages installed at "+exe.getName()+". No successful launch has been verified. Use Launch Studio to test.";}
-+            catch(Exception e){result="Installation did not complete: "+e.getMessage();}
-+            final String text=result;
-+            runOnUiThread(()->{if(isDestroyed())return;deployment=null;end();status.setText(text);message("Installation result",text);});
 +        });
 +    }
-+    private void launchStudio() {
-+        Container c=selected();if(c==null)return;
++
++    private void refresh() {
++        int old = containerPicker != null ? containerPicker.getSelectedItemPosition() : 0;
++        containers.clear();
++        for (Container c : new ContainerManager(this).getContainers()) {
++            if ("1".equals(c.getExtra("studioBridge", "0"))) {
++                containers.add(c);
++            }
++        }
++        List<String> names = new ArrayList<>();
++        for (Container c : containers) {
++            names.add(c.getName() + "  [" + c.getScreenSize() + "]");
++        }
++        if (names.isEmpty()) {
++            names.add("No Studio container yet (Tap Create New Container)");
++        }
++        suppressSpinnerEvents = true;
++        containerPicker.setAdapter(createSharpDropdownAdapter(names));
++        if (old >= 0 && old < containers.size()) {
++            containerPicker.setSelection(old);
++        }
++        suppressSpinnerEvents = false;
++        updateTelemetryBadges();
++    }
++
++    private void updateTelemetryBadges() {
++        RootFS fs = RootFS.find(this);
++        boolean ready = fs.isValid() && fs.getVersion() >= RootFSInstaller.LATEST_VERSION;
++        if (ready) {
++            runtimeBadgeText.setText("RUNTIME ENGINE: READY (WINE 10.10 + KERNELBASE PATCHED)");
++            runtimeBadgeText.setTextColor(COLOR_ACCENT_EMERALD);
++        } else {
++            runtimeBadgeText.setText("RUNTIME ENGINE: NOT INITIALIZED (TAP INSTALL / REPAIR RUNTIME)");
++            runtimeBadgeText.setTextColor(0xfffbbf24);
++        }
++
++        String presetKey = studioPrefs.getString("pref_graphics_preset", "DXVK_1103_VORTEK");
++        if (containers.isEmpty()) {
++            containerBadgeText.setText("CONTAINER: NONE CREATED YET  |  PRESET: " + presetKey);
++            studioVersionBadgeText.setText("STUDIO BUILD: AWAITING CONTAINER");
++            studioVersionBadgeText.setTextColor(COLOR_TEXT_SECONDARY);
++            statusBanner.setText(ready
++                    ? "Runtime ready. Create a container below, then download Roblox Studio."
++                    : "Step 1: Tap 'INSTALL / REPAIR RUNTIME ENGINE' to extract system files.");
++            return;
++        }
++
++        int idx = Math.max(0, Math.min(containers.size() - 1, containerPicker.getSelectedItemPosition()));
++        Container c = containers.get(idx);
++        containerBadgeText.setText("CONTAINER: " + c.getName().toUpperCase() + "  |  PRESET: " + presetKey + "  |  " + c.getScreenSize());
++
++        File exe = null;
++        String ver = "";
 +        try {
-+            File exe=StudioDeployment.currentExecutable(c.getRootDir());
-+            if(exe==null){message("Studio not installed","Complete the download step first.");return;}
-+            StudioLoginBridge.configureWineRegistry(c);
-+            Intent intent=new Intent(this,XServerDisplayActivity.class);intent.putExtra("container_id",c.id);intent.putExtra("exec_path",exe.getAbsolutePath());intent.putExtra("studio_bridge_session",true);startActivity(intent);
-+        }catch(Exception e){message("Cannot launch",e.toString());}
++            exe = StudioDeployment.currentExecutable(c.getRootDir());
++            File marker = new File(StudioDeployment.base(c.getRootDir()), "current-version.txt");
++            if (marker.isFile()) ver = DeploymentFiles.read(marker).trim();
++        } catch (Exception ignored) {}
++
++        if (exe != null && exe.isFile()) {
++            studioVersionBadgeText.setText("STUDIO BUILD: INSTALLED (" + (ver.isEmpty() ? exe.getName() : ver) + ")");
++            studioVersionBadgeText.setTextColor(COLOR_ACCENT_EMERALD);
++            statusBanner.setText("Ready to launch! Tap 'LAUNCH ROBLOX STUDIO NOW' above.");
++        } else {
++            studioVersionBadgeText.setText("STUDIO BUILD: NOT DOWNLOADED YET");
++            studioVersionBadgeText.setTextColor(0xfffbbf24);
++            statusBanner.setText("Container ready. Tap 'DOWNLOAD / UPDATE ROBLOX STUDIO' to install Studio.");
++        }
 +    }
-+    private void begin(String msg,boolean cancel) {
-+        busy=true;previousOrientation=getRequestedOrientation();setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
-+        progress=new ProgressDialog(this);progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);progress.setMax(100);progress.setMessage(msg);progress.setCancelable(false);progress.setCanceledOnTouchOutside(false);
-+        if(cancel)progress.setButton(ProgressDialog.BUTTON_NEGATIVE,"Cancel",(d,w)->{if(deployment!=null)deployment.cancel();});progress.show();
++
++    private Container selected() {
++        if (busy) {
++            message("Please wait", "A setup task is currently running.");
++            return null;
++        }
++        int i = containerPicker.getSelectedItemPosition();
++        if (i < 0 || i >= containers.size()) {
++            message("No Container Selected", "Tap 'CREATE NEW CONTAINER' first.");
++            return null;
++        }
++        return containers.get(i);
 +    }
-+    private void end(){busy=false;if(progress!=null){progress.dismiss();progress=null;}setRequestedOrientation(previousOrientation);}
-+    @Override protected void onDestroy(){if(deployment!=null)deployment.cancel();executor.shutdownNow();if(progress!=null)progress.dismiss();super.onDestroy();}
-+    private void message(String title,String body){if(!isDestroyed())new AlertDialog.Builder(this).setTitle(title).setMessage(body).setPositiveButton("Close",null).show();}
-+    private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
-+    private TextView text(String value,int sp,int color,int bottom){TextView t=new TextView(this);t.setText(value);t.setTextSize(sp);t.setTextColor(color);t.setLineSpacing(dp(3),1.1f);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(bottom);column.addView(t,lp);return t;}
-+    private void button(String label,Runnable action){Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(16);b.setMinHeight(dp(52));b.setOnClickListener(v->action.run());LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(16);column.addView(b,lp);}
-+    private Spinner spinner(String[] options){Spinner s=new Spinner(this);s.setMinimumHeight(dp(52));s.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,options));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(56));lp.bottomMargin=dp(12);column.addView(s,lp);return s;}
++
++    private void createContainer() {
++        if (busy) return;
++        RootFS fs = RootFS.find(this);
++        if (!fs.isValid() || fs.getVersion() < RootFSInstaller.LATEST_VERSION) {
++            new AlertDialog.Builder(this)
++                    .setTitle("Initialize Runtime Engine First")
++                    .setMessage("The Wine system runtime needs to be extracted once before creating a Studio container. Extract runtime now?")
++                    .setNegativeButton("Cancel", null)
++                    .setPositiveButton("Install Runtime", (d, w) -> installOrRepairRuntime())
++                    .show();
++            return;
++        }
++        try {
++            JSONObject data = buildContainerPresetJson();
++            data.put("name", "Studio Bridge " + (containers.size() + 1));
++            data.put("extraData", new JSONObject().put("studioBridge", "1"));
++            begin("Creating dedicated Studio Bridge container…", false);
++            new ContainerManager(this).createContainerAsync(data, c -> {
++                if (isDestroyed()) return;
++                end();
++                if (c == null) {
++                    refresh();
++                    message("Container creation failed", "Could not create container. Check free storage space.");
++                    return;
++                }
++                try {
++                    applySettingsToContainerObject(c);
++                } catch (Exception ignored) {}
++                refresh();
++                for (int i = 0; i < containers.size(); i++) {
++                    if (containers.get(i).id == c.id) {
++                        containerPicker.setSelection(i);
++                        break;
++                    }
++                }
++                updateTelemetryBadges();
++                statusBanner.setText("Container '" + c.getName() + "' created and patched! Download Roblox Studio next.");
++            });
++        } catch (Exception e) {
++            end();
++            message("Cannot create container", e.toString());
++        }
++    }
++
++    private void confirmInstall() {
++        if (containers.isEmpty()) {
++            createContainer();
++            return;
++        }
++        Container c = selected();
++        if (c == null) return;
++        new AlertDialog.Builder(this)
++                .setTitle("Download Roblox Studio")
++                .setMessage("This downloads and extracts the latest official Windows 64-bit Roblox Studio packages into " + c.getName() + " and applies the Wine/DXVK compatibility patches.\n\n" + DISCLAIMER)
++                .setNegativeButton("Cancel", null)
++                .setPositiveButton("Download & Patch", (d, w) -> install(c))
++                .show();
++    }
++
++    private void install(Container c) {
++        begin("Connecting to Roblox deployment service…", true);
++        deployment = new StudioDeployment((msg, pct) -> runOnUiThread(() -> {
++            if (progress != null && !isDestroyed()) {
++                progress.setMessage(msg);
++                progress.setProgress(pct);
++            }
++        }));
++        final StudioDeployment task = deployment;
++        executor.execute(() -> {
++            String result;
++            try {
++                File exe = task.install(c.getRootDir(), getCacheDir());
++                applySettingsToContainerObject(c);
++                result = "Roblox Studio installed (" + exe.getParentFile().getName() + ") and patched for Wine 10.10 + DXVK!";
++            } catch (Exception e) {
++                result = "Installation did not complete: " + e.getMessage();
++            }
++            final String text = result;
++            runOnUiThread(() -> {
++                if (isDestroyed()) return;
++                deployment = null;
++                end();
++                refresh();
++                statusBanner.setText(text);
++                message("Studio Deployment Complete", text);
++            });
++        });
++    }
++
++    private void launchStudio() {
++        if (containers.isEmpty()) {
++            createContainer();
++            return;
++        }
++        Container c = selected();
++        if (c == null) return;
++        try {
++            File exe = StudioDeployment.currentExecutable(c.getRootDir());
++            if (exe == null || !exe.isFile()) {
++                confirmInstall();
++                return;
++            }
++            applySettingsToContainerObject(c);
++            Intent intent = new Intent(this, XServerDisplayActivity.class);
++            intent.putExtra("container_id", c.id);
++            intent.putExtra("exec_path", exe.getAbsolutePath());
++            intent.putExtra("studio_bridge_session", true);
++            startActivity(intent);
++        } catch (Exception e) {
++            message("Cannot launch Studio", e.toString());
++        }
++    }
++
++    private void begin(String msg, boolean cancel) {
++        busy = true;
++        previousOrientation = getRequestedOrientation();
++        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
++        progress = new ProgressDialog(this);
++        progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
++        progress.setMax(100);
++        progress.setMessage(msg);
++        progress.setCancelable(false);
++        progress.setCanceledOnTouchOutside(false);
++        if (cancel) {
++            progress.setButton(ProgressDialog.BUTTON_NEGATIVE, "Cancel", (d, w) -> {
++                if (deployment != null) deployment.cancel();
++            });
++        }
++        progress.show();
++    }
++
++    private void end() {
++        busy = false;
++        if (progress != null) {
++            progress.dismiss();
++            progress = null;
++        }
++        setRequestedOrientation(previousOrientation);
++    }
++
++    @Override
++    protected void onDestroy() {
++        if (deployment != null) deployment.cancel();
++        executor.shutdownNow();
++        if (progress != null) progress.dismiss();
++        super.onDestroy();
++    }
++
++    private void message(String title, String body) {
++        if (!isDestroyed()) {
++            new AlertDialog.Builder(this)
++                    .setTitle(title)
++                    .setMessage(body)
++                    .setPositiveButton("OK", null)
++                    .show();
++        }
++    }
++
++    // -------------------------------------------------------------------------
++    // Sharp-Edged Double-Stroke UI Component Builders
++    // -------------------------------------------------------------------------
++
++    private LinearLayout createCard(LinearLayout parent, int topColor, int bottomColor, int accentStrokeColor) {
++        LinearLayout card = new LinearLayout(this);
++        card.setOrientation(LinearLayout.VERTICAL);
++        int pad = dp(16);
++        card.setPadding(pad, pad, pad, pad);
++
++        GradientDrawable outer = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{topColor, bottomColor}
++        );
++        outer.setShape(GradientDrawable.RECTANGLE);
++        outer.setCornerRadius(0f);
++        outer.setStroke(dp(1), accentStrokeColor);
++
++        GradientDrawable inner = new GradientDrawable();
++        inner.setShape(GradientDrawable.RECTANGLE);
++        inner.setCornerRadius(0f);
++        inner.setColor(Color.TRANSPARENT);
++        inner.setStroke(dp(1), 0x28ffffff);
++
++        LayerDrawable layered = new LayerDrawable(new Drawable[]{outer, inner});
++        int inset = dp(3);
++        layered.setLayerInset(1, inset, inset, inset, inset);
++        card.setBackground(layered);
++
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT
++        );
++        lp.bottomMargin = dp(16);
++        parent.addView(card, lp);
++        return card;
++    }
++
++    private void addSectionHeader(LinearLayout card, String titleText, String descText) {
++        TextView header = createLabel(titleText, 14, COLOR_ACCENT_CYAN, true);
++        header.setLetterSpacing(0.08f);
++        card.addView(header, marginParams(0, 0, 0, 4));
++
++        TextView desc = createLabel(descText, 12, COLOR_TEXT_SECONDARY, false);
++        card.addView(desc, marginParams(0, 0, 0, 14));
++    }
++
++    private void addFieldLabel(LinearLayout card, String labelText) {
++        TextView label = createLabel(labelText, 11, 0xffcbd5e1, true);
++        label.setLetterSpacing(0.07f);
++        card.addView(label, marginParams(0, 2, 0, 6));
++    }
++
++    private TextView createLabel(String value, int sp, int color, boolean boldCondensed) {
++        TextView t = new TextView(this);
++        t.setText(value);
++        t.setTextSize(sp);
++        t.setTextColor(color);
++        t.setLineSpacing(dp(2), 1.12f);
++        t.setTypeface(Typeface.create(
++                boldCondensed ? "sans-serif-condensed" : "sans-serif",
++                boldCondensed ? Typeface.BOLD : Typeface.NORMAL
++        ));
++        return t;
++    }
++
++    private Button createSharpButtonView(String label, int style, Runnable action) {
++        Button b = new Button(this);
++        b.setText(label);
++        b.setAllCaps(false);
++        b.setTextSize(13);
++        b.setTextColor(COLOR_TEXT_PRIMARY);
++        b.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
++        b.setLetterSpacing(0.06f);
++        b.setGravity(Gravity.CENTER);
++        b.setPadding(dp(14), 0, dp(14), 0);
++        b.setBackground(createDoubleStrokeDrawable(style));
++        b.setOnClickListener(v -> action.run());
++        return b;
++    }
++
++    private void addSharpButton(LinearLayout parent, String label, int style, Runnable action) {
++        Button b = createSharpButtonView(label, style, action);
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                dp(50)
++        );
++        lp.bottomMargin = dp(10);
++        parent.addView(b, lp);
++    }
++
++    private Drawable createDoubleStrokeDrawable(int style) {
++        int topColor;
++        int bottomColor;
++        int outerStroke;
++        int innerStroke;
++
++        switch (style) {
++            case BTN_SUCCESS:
++                topColor = 0xff0d4736;
++                bottomColor = 0xff07291f;
++                outerStroke = 0xff10b981;
++                innerStroke = 0x776ee7b7;
++                break;
++            case BTN_PRIMARY:
++                topColor = 0xff16336b;
++                bottomColor = 0xff0d1f45;
++                outerStroke = 0xff3b82f6;
++                innerStroke = 0x777dd3fc;
++                break;
++            case BTN_DANGER:
++                topColor = 0xff3b1220;
++                bottomColor = 0xff220912;
++                outerStroke = 0xfff43f5e;
++                innerStroke = 0x66fda4af;
++                break;
++            case BTN_SECONDARY:
++            default:
++                topColor = 0xff152033;
++                bottomColor = 0xff0c1320;
++                outerStroke = 0xff475569;
++                innerStroke = 0x55cbd5e1;
++                break;
++        }
++
++        GradientDrawable outer = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{topColor, bottomColor}
++        );
++        outer.setShape(GradientDrawable.RECTANGLE);
++        outer.setCornerRadius(0f);
++        outer.setStroke(dp(1), outerStroke);
++
++        GradientDrawable inner = new GradientDrawable();
++        inner.setShape(GradientDrawable.RECTANGLE);
++        inner.setCornerRadius(0f);
++        inner.setColor(Color.TRANSPARENT);
++        inner.setStroke(dp(1), innerStroke);
++
++        LayerDrawable layered = new LayerDrawable(new Drawable[]{outer, inner});
++        int inset = dp(3);
++        layered.setLayerInset(1, inset, inset, inset, inset);
++        return layered;
++    }
++
++    private Spinner createSharpSpinner(String[] options) {
++        List<String> list = new ArrayList<>();
++        for (String s : options) list.add(s);
++        Spinner s = new Spinner(this);
++        s.setMinimumHeight(dp(48));
++        s.setPopupBackgroundDrawable(new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{0xff0f172a, 0xff090d16}
++        ));
++
++        GradientDrawable outer = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{0xff111a2c, 0xff0b111e}
++        );
++        outer.setCornerRadius(0f);
++        outer.setStroke(dp(1), COLOR_ACCENT_BLUE);
++
++        GradientDrawable inner = new GradientDrawable();
++        inner.setCornerRadius(0f);
++        inner.setColor(Color.TRANSPARENT);
++        inner.setStroke(dp(1), 0x407dd3fc);
++
++        LayerDrawable bg = new LayerDrawable(new Drawable[]{outer, inner});
++        int inset = dp(3);
++        bg.setLayerInset(1, inset, inset, inset, inset);
++        s.setBackground(bg);
++
++        s.setAdapter(createSharpDropdownAdapter(list));
++        return s;
++    }
++
++    private ArrayAdapter<String> createSharpDropdownAdapter(List<String> items) {
++        return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
++            @NonNull
++            @Override
++            public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
++                TextView tv = (TextView) super.getView(position, convertView, parent);
++                tv.setTextColor(COLOR_TEXT_PRIMARY);
++                tv.setTextSize(13);
++                tv.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
++                tv.setPadding(dp(12), dp(10), dp(12), dp(10));
++                tv.setSingleLine(true);
++                return tv;
++            }
++
++            @Override
++            public View getDropDownView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
++                TextView tv = (TextView) super.getDropDownView(position, convertView, parent);
++                tv.setTextColor(COLOR_TEXT_PRIMARY);
++                tv.setBackgroundColor(position % 2 == 0 ? 0xff0f172a : 0xff131e33);
++                tv.setTextSize(13);
++                tv.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
++                tv.setPadding(dp(14), dp(12), dp(14), dp(12));
++                return tv;
++            }
++        };
++    }
++
++    private CheckBox addStyledCheckbox(LinearLayout parent, String label, boolean defaultChecked) {
++        CheckBox cb = new CheckBox(this);
++        cb.setText(label);
++        cb.setChecked(defaultChecked);
++        cb.setTextColor(COLOR_TEXT_PRIMARY);
++        cb.setTextSize(12.5f);
++        cb.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
++        cb.setPadding(dp(8), dp(8), dp(8), dp(8));
++
++        GradientDrawable boxBg = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{0xff0e1626, 0xff090f1a}
++        );
++        boxBg.setCornerRadius(0f);
++        boxBg.setStroke(dp(1), 0xff26354d);
++        cb.setBackground(boxBg);
++
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT
++        );
++        lp.bottomMargin = dp(6);
++        parent.addView(cb, lp);
++        return cb;
++    }
++
++    private void setSpinnerByKey(Spinner spinner, String[] keys, String targetKey) {
++        if (spinner == null || keys == null) return;
++        for (int i = 0; i < keys.length; i++) {
++            if (keys[i].equalsIgnoreCase(targetKey)) {
++                spinner.setSelection(i);
++                return;
++            }
++        }
++        spinner.setSelection(0);
++    }
++
++    private String pickKey(Spinner spinner, String[] keys, String fallback) {
++        if (spinner == null || keys == null || keys.length == 0) return fallback;
++        int pos = spinner.getSelectedItemPosition();
++        if (pos < 0 || pos >= keys.length) return fallback;
++        return keys[pos];
++    }
++
++    private LinearLayout.LayoutParams marginParams(int leftDp, int topDp, int rightDp, int bottomDp) {
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.WRAP_CONTENT
++        );
++        lp.setMargins(dp(leftDp), dp(topDp), dp(rightDp), dp(bottomDp));
++        return lp;
++    }
++
++    private int dp(int n) {
++        return Math.round(n * getResources().getDisplayMetrics().density);
++    }
 +}
 diff --git a/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java b/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java
 new file mode 100644
-index 0000000..23cb2c0
+index 0000000..8799311
 --- /dev/null
 +++ b/app/src/main/java/com/winlator/studiobridge/StudioLoginBridge.java
-@@ -0,0 +1,570 @@
+@@ -0,0 +1,1124 @@
 +/* Studio Bridge additions, 2026. Distributed under LGPL-2.1-or-later. */
 +package com.winlator.studiobridge;
 +
@@ -856,7 +2113,11 @@ index 0000000..23cb2c0
 +import android.content.ClipboardManager;
 +import android.content.Context;
 +import android.content.Intent;
++import android.content.SharedPreferences;
 +import android.graphics.Color;
++import android.graphics.Typeface;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.LayerDrawable;
 +import android.net.Uri;
 +import android.os.SystemClock;
 +import android.view.Gravity;
@@ -881,31 +2142,55 @@ index 0000000..23cb2c0
 +import com.winlator.XServerDisplayActivity;
 +import com.winlator.container.Container;
 +import com.winlator.container.ContainerManager;
++import com.winlator.core.EnvVars;
 +import com.winlator.core.WineRegistryEditor;
 +import com.winlator.core.WineUtils;
 +import com.winlator.winhandler.WinHandler;
++import com.winlator.xenvironment.RootFS;
 +
 +import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
 +import java.io.IOException;
 +import java.net.URI;
++import java.nio.ByteBuffer;
++import java.nio.ByteOrder;
++import java.nio.charset.StandardCharsets;
 +import java.util.Locale;
 +
 +/**
-+ * Bridges Roblox Studio's OAuth browser login inside Winlator:
-+ * 1. Intercepts Wine browser launch requests (RequestCodes.OPEN_URL) so Android does not
-+ *    force split-screen Chrome (FLAG_ACTIVITY_LAUNCH_ADJACENT).
-+ * 2. Provides an in-app WebView sign-in modal that intercepts roblox-studio-auth: and
-+ *    roblox-studio: redirects directly inside the running Studio session.
-+ * 3. Supports full-screen external browser fallback while keeping Wine guest processes
-+ *    unpaused so Studio's PKCE OAuth state stays alive until the deep-link callback returns.
-+ * 4. Delivers long OAuth callback URIs into the active Wine session via a short batch helper
-+ *    (C:\StudioBridge\studio-auth.bat) to avoid WinHandler's 256-byte UDP packet limit.
++ * Bridges Roblox Studio's OAuth browser login and Wine 10.10 runtime compatibility inside Winlator:
++ * 1. Patches Wine 10.10's kernelbase.dll (64-bit & 32-bit) in-place to export VirtualProtectFromApp
++ *    (forwarding to VirtualProtect), preventing RobloxCrashHandler.exe from crashing on startup
++ *    and hanging RobloxStudioBeta.exe indefinitely on the splash screen (Vinegar Issue #591/#592).
++ * 2. Syncs Studio's bundled native UCRT/MSVC runtime DLLs (ucrtbase.dll, msvcp140*.dll,
++ *    vcruntime140*.dll, concrt140.dll, vccorlib140.dll) into system32, removes ucrtbase from
++ *    Wine's KnownDLLs, and sets MIMALLOC_FORCE_REDIRECT=1 so Studio's mimalloc allocator hooks
++ *    succeed without crashing (Kombucha patches 0002/0004/0012).
++ * 3. Writes ClientSettings/ClientAppSettings.json to configure Studio's rendering backend
++ *    (D3D11 for DXVK/WineD3D or Vulkan) and disables dxdiagn.dll so Studio never hangs probing
++ *    unsupported Vulkan 1.3 extensions or DirectX diagnostics during the splash screen.
++ * 4. Intercepts Wine browser launch requests (RequestCodes.OPEN_URL) with a full-screen in-app
++ *    OAuth bridge modal and delivers callback URIs into the running Wine session.
 + */
 +public final class StudioLoginBridge {
 +    public static final String DEFAULT_AUTH_URL = "https://authorize.roblox.com/";
 +    public static final String STUDIO_AUTH_BAT_DOS = "C:\\StudioBridge\\studio-auth.bat";
 +    public static final String STUDIO_PROTOCOL_REG_DOS = "C:\\StudioBridge\\studio-protocol.reg";
++    public static final String PREFS_NAME = "studio_bridge_prefs";
 +    private static final long EXTERNAL_AUTH_GRACE_MS = 10 * 60 * 1000L;
++
++    private static final String[] STUDIO_NATIVE_RUNTIME_DLLS = new String[]{
++            "ucrtbase.dll",
++            "concrt140.dll",
++            "msvcp140.dll",
++            "msvcp140_1.dll",
++            "msvcp140_2.dll",
++            "msvcp140_codecvt_ids.dll",
++            "vccorlib140.dll",
++            "vcruntime140.dll",
++            "vcruntime140_1.dll"
++    };
 +
 +    private static volatile long externalAuthStartedAt = 0L;
 +    private static Dialog activeLoginDialog;
@@ -914,6 +2199,541 @@ index 0000000..23cb2c0
 +    private static String lastCallbackUri;
 +
 +    private StudioLoginBridge() {}
++
++    /**
++     * Patches a Wine PE kernelbase.dll byte array in-place to export "VirtualProtectFromApp"
++     * pointing to the existing "VirtualProtect" RVA.
++     * Returns true if the byte array was modified, false if already patched or not applicable.
++     */
++    public static boolean patchKernelbaseBytes(byte[] pe) {
++        if (pe == null || pe.length < 0x200) return false;
++        ByteBuffer buf = ByteBuffer.wrap(pe).order(ByteOrder.LITTLE_ENDIAN);
++        if ((pe[0] & 0xFF) != 'M' || (pe[1] & 0xFF) != 'Z') return false;
++
++        int peOffset = buf.getInt(0x3C);
++        if (peOffset <= 0 || peOffset + 0x90 > pe.length) return false;
++        if (buf.getInt(peOffset) != 0x00004550) return false; // "PE\0\0"
++
++        int numSections = buf.getShort(peOffset + 6) & 0xFFFF;
++        int optHeaderSize = buf.getShort(peOffset + 20) & 0xFFFF;
++        int optOffset = peOffset + 24;
++        int magic = buf.getShort(optOffset) & 0xFFFF;
++        if (magic != 0x20B && magic != 0x10B) return false;
++
++        int secTableOffset = optOffset + optHeaderSize;
++        int edataSecOffset = -1;
++        int edataVa = 0;
++        int edataVSize = 0;
++        int edataRawPtr = 0;
++        int edataRawSize = 0;
++
++        for (int i = 0; i < numSections; i++) {
++            int sOff = secTableOffset + i * 40;
++            if (sOff + 40 > pe.length) return false;
++            String name = readAsciiZeroTerminated(pe, sOff, 8);
++            if (".edata".equals(name)) {
++                edataSecOffset = sOff;
++                edataVSize = buf.getInt(sOff + 8);
++                edataVa = buf.getInt(sOff + 12);
++                edataRawSize = buf.getInt(sOff + 16);
++                edataRawPtr = buf.getInt(sOff + 20);
++                break;
++            }
++        }
++        if (edataSecOffset < 0 || edataRawPtr <= 0 || edataRawPtr + edataRawSize > pe.length) {
++            return false;
++        }
++
++        int numFunctions = buf.getInt(edataRawPtr + 20);
++        int numNames = buf.getInt(edataRawPtr + 24);
++        int addrFunctionsRva = buf.getInt(edataRawPtr + 28);
++        int addrNamesRva = buf.getInt(edataRawPtr + 32);
++        int addrOrdinalsRva = buf.getInt(edataRawPtr + 36);
++
++        if (numFunctions <= 0 || numNames <= 0 || numFunctions > 8192 || numNames > 8192) {
++            return false;
++        }
++
++        int funcsFileOff = edataRawPtr + (addrFunctionsRva - edataVa);
++        int namesFileOff = edataRawPtr + (addrNamesRva - edataVa);
++        int ordsFileOff = edataRawPtr + (addrOrdinalsRva - edataVa);
++
++        // Expect standard Wine .edata layout: Functions -> Names -> Ordinals -> Strings
++        if (namesFileOff != funcsFileOff + numFunctions * 4) return false;
++        if (ordsFileOff != namesFileOff + numNames * 4) return false;
++
++        String targetName = "VirtualProtectFromApp";
++        byte[] targetBytes = (targetName + "\0").getBytes(StandardCharsets.US_ASCII);
++        int shift = 16; // 4 + 4 + 2 = 10 bytes table growth, aligned to 16 bytes
++        int extraNeeded = shift + targetBytes.length + 4;
++        if (edataVSize + extraNeeded > edataRawSize) {
++            return false;
++        }
++
++        // Verify padding space at the end of .edata is clean zeros
++        int checkStart = edataRawPtr + edataVSize;
++        int checkEnd = Math.min(edataRawPtr + edataRawSize, checkStart + extraNeeded);
++        for (int i = checkStart; i < checkEnd; i++) {
++            if (pe[i] != 0) return false;
++        }
++
++        int vpRva = -1;
++        int insertIdx = numNames;
++        int maxStrEndRva = 0;
++
++        for (int i = 0; i < numNames; i++) {
++            int nameRva = buf.getInt(namesFileOff + i * 4);
++            int nameFileOff = edataRawPtr + (nameRva - edataVa);
++            if (nameFileOff < edataRawPtr || nameFileOff >= edataRawPtr + edataRawSize) {
++                return false;
++            }
++            String exportName = readAsciiZeroTerminated(pe, nameFileOff, 256);
++            int strEndRva = nameRva + exportName.length() + 1;
++            if (strEndRva > maxStrEndRva) maxStrEndRva = strEndRva;
++
++            if (targetName.equals(exportName)) {
++                return false; // Already patched!
++            }
++            if ("VirtualProtect".equals(exportName)) {
++                int ord = buf.getShort(ordsFileOff + i * 2) & 0xFFFF;
++                if (ord < numFunctions) {
++                    vpRva = buf.getInt(funcsFileOff + ord * 4);
++                }
++            }
++            if (insertIdx == numNames && exportName.compareTo(targetName) > 0) {
++                insertIdx = i;
++            }
++        }
++
++        if (vpRva <= 0) return false;
++
++        int stringsStartRva = addrOrdinalsRva + numNames * 2;
++        int stringsStartFileOff = edataRawPtr + (stringsStartRva - edataVa);
++        int stringsEndRva = Math.max(maxStrEndRva, edataVa + edataVSize);
++        int stringsLen = stringsEndRva - stringsStartRva;
++        if (stringsLen <= 0 || stringsStartFileOff + stringsLen + shift + targetBytes.length > edataRawPtr + edataRawSize) {
++            return false;
++        }
++
++        byte[] funcsBlock = new byte[numFunctions * 4];
++        System.arraycopy(pe, funcsFileOff, funcsBlock, 0, funcsBlock.length);
++
++        int[] nameRvas = new int[numNames];
++        int[] ordinals = new int[numNames];
++        for (int i = 0; i < numNames; i++) {
++            nameRvas[i] = buf.getInt(namesFileOff + i * 4);
++            ordinals[i] = buf.getShort(ordsFileOff + i * 2) & 0xFFFF;
++        }
++
++        byte[] stringsBlock = new byte[stringsLen];
++        System.arraycopy(pe, stringsStartFileOff, stringsBlock, 0, stringsLen);
++
++        // Shift forwarder RVAs inside AddressOfFunctions if they point into the strings block
++        ByteBuffer funcsBuf = ByteBuffer.wrap(funcsBlock).order(ByteOrder.LITTLE_ENDIAN);
++        for (int i = 0; i < numFunctions; i++) {
++            int fRva = funcsBuf.getInt(i * 4);
++            if (fRva >= stringsStartRva && fRva < edataVa + edataVSize) {
++                funcsBuf.putInt(i * 4, fRva + shift);
++            }
++        }
++
++        int newNumFunctions = numFunctions + 1;
++        int newNumNames = numNames + 1;
++        int newOrd = numFunctions; // Append at end of AddressOfFunctions so existing ordinals never change
++
++        int newStringsStartRva = stringsStartRva + shift;
++        int newStringsStartFileOff = edataRawPtr + (newStringsStartRva - edataVa);
++
++        // Write shifted string block and append "VirtualProtectFromApp\0"
++        System.arraycopy(stringsBlock, 0, pe, newStringsStartFileOff, stringsLen);
++        int newTargetStrRva = newStringsStartRva + stringsLen;
++        int newTargetStrFileOff = edataRawPtr + (newTargetStrRva - edataVa);
++        System.arraycopy(targetBytes, 0, pe, newTargetStrFileOff, targetBytes.length);
++
++        // Write updated AddressOfFunctions (with vpRva appended at index numFunctions)
++        System.arraycopy(funcsBlock, 0, pe, funcsFileOff, funcsBlock.length);
++        buf.putInt(funcsFileOff + numFunctions * 4, vpRva);
++
++        // Write updated AddressOfNames and AddressOfNameOrdinals
++        int newNamesRva = addrFunctionsRva + newNumFunctions * 4;
++        int newOrdsRva = newNamesRva + newNumNames * 4;
++        int newNamesFileOff = edataRawPtr + (newNamesRva - edataVa);
++        int newOrdsFileOff = edataRawPtr + (newOrdsRva - edataVa);
++
++        for (int i = 0; i < newNumNames; i++) {
++            int rvaVal;
++            int ordVal;
++            if (i < insertIdx) {
++                rvaVal = nameRvas[i] + shift;
++                ordVal = ordinals[i];
++            } else if (i == insertIdx) {
++                rvaVal = newTargetStrRva;
++                ordVal = newOrd;
++            } else {
++                rvaVal = nameRvas[i - 1] + shift;
++                ordVal = ordinals[i - 1];
++            }
++            buf.putInt(newNamesFileOff + i * 4, rvaVal);
++            buf.putShort(newOrdsFileOff + i * 2, (short) (ordVal & 0xFFFF));
++        }
++
++        // Zero any padding gap between end of new ordinals table and start of shifted strings
++        int newOrdsEndFileOff = newOrdsFileOff + newNumNames * 2;
++        for (int i = newOrdsEndFileOff; i < newStringsStartFileOff; i++) {
++            pe[i] = 0;
++        }
++
++        // Update export directory header
++        int exportDirNameRva = buf.getInt(edataRawPtr + 12);
++        if (exportDirNameRva >= stringsStartRva && exportDirNameRva < edataVa + edataVSize) {
++            buf.putInt(edataRawPtr + 12, exportDirNameRva + shift);
++        }
++        buf.putInt(edataRawPtr + 20, newNumFunctions);
++        buf.putInt(edataRawPtr + 24, newNumNames);
++        buf.putInt(edataRawPtr + 32, newNamesRva);
++        buf.putInt(edataRawPtr + 36, newOrdsRva);
++
++        // Update .edata VirtualSize and OptionalHeader Export DataDirectory Size
++        int newEdataVSize = (newTargetStrRva + targetBytes.length) - edataVa;
++        buf.putInt(edataSecOffset + 8, newEdataVSize);
++        int exportDataDirOffset = optOffset + (magic == 0x20B ? 112 : 96);
++        if (exportDataDirOffset + 8 <= pe.length) {
++            buf.putInt(exportDataDirOffset + 4, newEdataVSize);
++        }
++        return true;
++    }
++
++    private static String readAsciiZeroTerminated(byte[] data, int offset, int maxLen) {
++        int end = offset;
++        int limit = Math.min(data.length, offset + maxLen);
++        while (end < limit && data[end] != 0) {
++            end++;
++        }
++        return new String(data, offset, end - offset, StandardCharsets.US_ASCII);
++    }
++
++    public static boolean patchKernelbaseDll(File dllFile) {
++        if (dllFile == null || !dllFile.isFile()) return false;
++        try {
++            byte[] bytes = readAllBytes(dllFile);
++            if (!patchKernelbaseBytes(bytes)) return false;
++            File tmp = new File(dllFile.getParentFile(), dllFile.getName() + ".studiotmp");
++            try (FileOutputStream fos = new FileOutputStream(tmp)) {
++                fos.write(bytes);
++                fos.getFD().sync();
++            }
++            if (!tmp.renameTo(dllFile)) {
++                try (FileOutputStream fos = new FileOutputStream(dllFile)) {
++                    fos.write(bytes);
++                    fos.getFD().sync();
++                }
++                tmp.delete();
++            }
++            return true;
++        } catch (Exception e) {
++            return false;
++        }
++    }
++
++    public static void patchRootFSKernelbase(File rootDir) {
++        if (rootDir == null || !rootDir.isDirectory()) return;
++        String[] relativePaths = new String[]{
++                "opt/wine/lib/wine/x86_64-windows/kernelbase.dll",
++                "opt/wine/lib/wine/i386-windows/kernelbase.dll",
++                ".wine/drive_c/windows/system32/kernelbase.dll",
++                ".wine/drive_c/windows/syswow64/kernelbase.dll"
++        };
++        for (String rel : relativePaths) {
++            File target = new File(rootDir, rel);
++            if (target.isFile()) {
++                patchKernelbaseDll(target);
++            }
++        }
++    }
++
++    public static String buildClientAppSettingsJson(String rendererMode) {
++        String mode = rendererMode != null ? rendererMode.trim() : "D3D11";
++        StringBuilder sb = new StringBuilder();
++        sb.append("{\n");
++        if ("Vulkan".equalsIgnoreCase(mode)) {
++            sb.append("  \"FFlagDebugGraphicsPreferVulkan\": true,\n");
++            sb.append("  \"FFlagDebugGraphicsDisableD3D11\": true,\n");
++        } else if ("OpenGL".equalsIgnoreCase(mode)) {
++            sb.append("  \"FFlagDebugGraphicsPreferOpenGL\": true,\n");
++            sb.append("  \"FFlagDebugGraphicsDisableD3D11\": true,\n");
++            sb.append("  \"FFlagDebugGraphicsDisableVulkan\": true,\n");
++        } else {
++            // Default D3D11 (optimal for DXVK and WineD3D; prevents Studio hanging on Vulkan 1.3 probes)
++            sb.append("  \"FFlagDebugGraphicsPreferD3D11\": true,\n");
++            sb.append("  \"FFlagDebugGraphicsDisableVulkan\": true,\n");
++        }
++        sb.append("  \"FLogStudioLuauPlugin\": 0\n");
++        sb.append("}\n");
++        return sb.toString();
++    }
++
++    public static void writeClientAppSettings(File studioExe, String rendererMode) {
++        if (studioExe == null || !studioExe.isFile()) return;
++        File versionDir = studioExe.getParentFile();
++        if (versionDir == null) return;
++        try {
++            File clientSettingsDir = new File(versionDir, "ClientSettings");
++            DeploymentFiles.mkdir(clientSettingsDir);
++            File settingsFile = new File(clientSettingsDir, "ClientAppSettings.json");
++            DeploymentFiles.write(settingsFile, buildClientAppSettingsJson(rendererMode));
++        } catch (Exception ignored) {}
++    }
++
++    public static void syncStudioRuntimeDlls(File studioExe, File containerRoot, boolean useDxvk) {
++        if (studioExe == null || !studioExe.isFile() || containerRoot == null) return;
++        File versionDir = studioExe.getParentFile();
++        File system32Dir = new File(containerRoot, ".wine/drive_c/windows/system32");
++        if (versionDir == null || !system32Dir.isDirectory()) return;
++
++        // Copy Studio's native UCRT & MSVC runtime DLLs into system32 so mimalloc-redirect.dll
++        // hooks the native ucrtbase.dll in system32 without page-faulting or asserting.
++        for (String dllName : STUDIO_NATIVE_RUNTIME_DLLS) {
++            File src = new File(versionDir, dllName);
++            if (src.isFile()) {
++                File dst = new File(system32Dir, dllName);
++                try {
++                    if (!dst.isFile() || dst.length() != src.length()) {
++                        copyFile(src, dst);
++                    }
++                } catch (Exception ignored) {}
++            }
++        }
++
++        // Also mirror DXVK d3d11.dll and dxgi.dll next to RobloxStudioBeta.exe when DXVK is active,
++        // or remove stale local copies when using WineD3D/Vulkan.
++        for (String dxDll : new String[]{"d3d11.dll", "dxgi.dll"}) {
++            File localDxDll = new File(versionDir, dxDll);
++            if (useDxvk) {
++                File sysDxDll = new File(system32Dir, dxDll);
++                if (sysDxDll.isFile()) {
++                    try {
++                        if (!localDxDll.isFile() || localDxDll.length() != sysDxDll.length()) {
++                            copyFile(sysDxDll, localDxDll);
++                        }
++                    } catch (Exception ignored) {}
++                }
++            } else if (localDxDll.isFile()) {
++                localDxDll.delete();
++            }
++        }
++    }
++
++    public static void prepareStudioEnvironment(Context context, RootFS rootFS, Container container) {
++        if (rootFS != null) {
++            patchRootFSKernelbase(rootFS.getRootDir());
++        }
++        if (container != null) {
++            patchRootFSKernelbase(container.getRootDir());
++        }
++        configureWineRegistry(context, container);
++    }
++
++    public static void configureWineRegistry(Container container) {
++        configureWineRegistry(null, container);
++    }
++
++    public static void configureWineRegistry(Context context, Container container) {
++        if (container == null) return;
++        try {
++            SharedPreferences prefs = context != null
++                    ? context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++                    : null;
++            boolean mimallocFix = prefs == null || prefs.getBoolean("pref_mimalloc_fix", true);
++            boolean disableDxdiagn = prefs == null || prefs.getBoolean("pref_disable_dxdiagn", true);
++            boolean webview2Fix = prefs == null || prefs.getBoolean("pref_webview2_fix", true);
++            boolean darkTheme = prefs == null || prefs.getBoolean("pref_dark_theme", true);
++            int wineDpi = prefs != null ? prefs.getInt("pref_wine_dpi", 98) : 98;
++            String rendererPref = prefs != null ? prefs.getString("pref_studio_renderer", "Auto") : "Auto";
++
++            String dxWrapper = container.getDXWrapper();
++            boolean useDxvk = dxWrapper != null && dxWrapper.contains("dxvk");
++
++            String resolvedRenderer;
++            if ("Vulkan".equalsIgnoreCase(rendererPref)) {
++                resolvedRenderer = "Vulkan";
++            } else if ("OpenGL".equalsIgnoreCase(rendererPref)) {
++                resolvedRenderer = "OpenGL";
++            } else if ("D3D11".equalsIgnoreCase(rendererPref)) {
++                resolvedRenderer = "D3D11";
++            } else {
++                // Auto: D3D11 for DXVK and WineD3D, Vulkan only if Native Vulkan preset is selected
++                String presetMode = prefs != null ? prefs.getString("pref_graphics_preset", "DXVK_241") : "DXVK_241";
++                resolvedRenderer = "VULKAN_NATIVE".equals(presetMode) ? "Vulkan" : "D3D11";
++            }
++
++            File rootDir = container.getRootDir();
++            patchRootFSKernelbase(rootDir);
++
++            File exe = StudioDeployment.currentExecutable(rootDir);
++            if (exe != null) {
++                writeClientAppSettings(exe, resolvedRenderer);
++                if (mimallocFix) {
++                    syncStudioRuntimeDlls(exe, rootDir, useDxvk);
++                }
++            }
++
++            File marker = new File(StudioDeployment.base(rootDir), "current-version.txt");
++            String version = marker.isFile() ? DeploymentFiles.read(marker).trim() : "";
++            String dosExePath = exe != null ? WineUtils.unixToDOSPath(exe.getAbsolutePath(), container) : null;
++            if (dosExePath != null && !version.isEmpty()) {
++                File base = StudioDeployment.base(rootDir);
++                DeploymentFiles.mkdir(base);
++                DeploymentFiles.write(new File(base, "studio-protocol.reg"), buildProtocolRegContent(dosExePath, version));
++            }
++
++            String command = dosExePath != null ? "\"" + dosExePath + "\" \"%1\"" : null;
++            String icon = dosExePath != null ? dosExePath + ",0" : null;
++
++            for (String regName : new String[]{".wine/user.reg", ".wine/system.reg"}) {
++                File regFile = new File(rootDir, regName);
++                if (!regFile.isFile()) continue;
++                try (WineRegistryEditor editor = new WineRegistryEditor(regFile)) {
++                    if (command != null && icon != null) {
++                        editor.setStringValue("Software\\Classes\\roblox-studio", null, "URL: Roblox Protocol");
++                        editor.setStringValue("Software\\Classes\\roblox-studio", "URL Protocol", "");
++                        editor.setStringValue("Software\\Classes\\roblox-studio\\DefaultIcon", null, icon);
++                        editor.setStringValue("Software\\Classes\\roblox-studio\\shell\\open\\command", null, command);
++
++                        editor.setStringValue("Software\\Classes\\roblox-studio-auth", null, "URL: Roblox Studio Auth Protocol");
++                        editor.setStringValue("Software\\Classes\\roblox-studio-auth", "URL Protocol", "");
++                        editor.setStringValue("Software\\Classes\\roblox-studio-auth\\DefaultIcon", null, icon);
++                        editor.setStringValue("Software\\Classes\\roblox-studio-auth\\shell\\open\\command", null, command);
++
++                        editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio", "version", version);
++                        editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio", "clientExePath", dosExePath);
++                        editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio\\Channel", "www.roblox.com", "LIVE");
++                    }
++
++                    editor.setStringValue("Software\\Wine\\WineBrowser", "Browsers", "C:\\windows\\winhandler.exe /url");
++
++                    // DLL overrides for Studio runtime stability
++                    if (mimallocFix) {
++                        for (String dll : STUDIO_NATIVE_RUNTIME_DLLS) {
++                            String dllBase = dll.substring(0, dll.length() - 4);
++                            editor.setStringValue("Software\\Wine\\DllOverrides", dllBase, "native,builtin");
++                        }
++                    }
++                    if (useDxvk) {
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d11", "native,builtin");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "dxgi", "native,builtin");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d10core", "native,builtin");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d9", "native,builtin");
++                    } else {
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d11", "builtin");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "dxgi", "builtin");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "d3d10core", "builtin");
++                    }
++                    if (disableDxdiagn) {
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "dxdiagn", "");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "winemenubuilder.exe", "");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "mscoree", "");
++                        editor.setStringValue("Software\\Wine\\DllOverrides", "mshtml", "");
++                    }
++                    if (webview2Fix) {
++                        editor.setStringValue("Software\\Wine\\AppDefaults\\msedgewebview2.exe", "Version", "win8");
++                    }
++                    if (wineDpi >= 96 && wineDpi <= 240) {
++                        editor.setDwordValue("Control Panel\\Desktop", "LogPixels", wineDpi);
++                        editor.setDwordValue("Software\\Fonts", "LogPixels", wineDpi);
++                    }
++                    if (darkTheme) {
++                        editor.setDwordValue("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "AppsUseLightTheme", 0);
++                        editor.setDwordValue("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "SystemUsesLightTheme", 0);
++                    }
++                    if (mimallocFix && ".wine/system.reg".equals(regName)) {
++                        // Remove ucrtbase from KnownDLLs so Wine allows native ucrtbase.dll override
++                        editor.removeValue("System\\CurrentControlSet\\Control\\Session Manager\\KnownDLLs", "ucrtbase");
++                    }
++                }
++            }
++        } catch (Exception ignored) {}
++    }
++
++    public static void applyStudioEnvVars(Context context, Container container, EnvVars envVars) {
++        if (envVars == null) return;
++        SharedPreferences prefs = context != null
++                ? context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++                : null;
++        boolean mimallocFix = prefs == null || prefs.getBoolean("pref_mimalloc_fix", true);
++        boolean disableDxdiagn = prefs == null || prefs.getBoolean("pref_disable_dxdiagn", true);
++        boolean dxvkAsync = prefs == null || prefs.getBoolean("pref_dxvk_async", true);
++        String fpsCap = prefs != null ? prefs.getString("pref_fps_cap", "0") : "0";
++
++        String dxWrapper = container != null ? container.getDXWrapper() : "dxvk";
++        boolean useDxvk = dxWrapper != null && dxWrapper.contains("dxvk");
++
++        envVars.put("WINEBOOT_HIDE_DIALOG", "1");
++        envVars.put("WINE_LARGE_ADDRESS_AWARE", "1");
++        envVars.put("WINEESYNC", "1");
++        envVars.put("WINEFSYNC", "1");
++        if (mimallocFix) {
++            envVars.put("MIMALLOC_FORCE_REDIRECT", "1");
++        }
++        if (useDxvk) {
++            envVars.put("DXVK_STATE_CACHE", "1");
++            envVars.put("DXVK_LOG_LEVEL", "none");
++            if (dxvkAsync) {
++                envVars.put("DXVK_ASYNC", "1");
++                envVars.put("DXVK_GPLASYNCCACHE", "1");
++            }
++            if (fpsCap != null && !fpsCap.isEmpty() && !"0".equals(fpsCap)) {
++                envVars.put("DXVK_FRAME_RATE", fpsCap);
++            }
++        }
++
++        StringBuilder dllOverrides = new StringBuilder();
++        if (disableDxdiagn) {
++            dllOverrides.append("dxdiagn=;winemenubuilder.exe=;mscoree=;mshtml=;");
++        }
++        if (mimallocFix) {
++            dllOverrides.append("ucrtbase=n,b;concrt140=n,b;msvcp140=n,b;msvcp140_1=n,b;msvcp140_2=n,b;msvcp140_codecvt_ids=n,b;vccorlib140=n,b;vcruntime140=n,b;vcruntime140_1=n,b;");
++        }
++        if (useDxvk) {
++            dllOverrides.append("d3d11=n,b;dxgi=n,b;d3d10core=n,b;d3d9=n,b");
++        } else {
++            dllOverrides.append("d3d11=b;dxgi=b;d3d10core=b");
++        }
++        envVars.put("WINEDLLOVERRIDES", dllOverrides.toString());
++    }
++
++    private static byte[] readAllBytes(File file) throws IOException {
++        long len = file.length();
++        if (len <= 0 || len > 64 * 1024 * 1024L) {
++            throw new IOException("Invalid file length: " + len);
++        }
++        byte[] data = new byte[(int) len];
++        try (FileInputStream fis = new FileInputStream(file)) {
++            int offset = 0;
++            while (offset < data.length) {
++                int read = fis.read(data, offset, data.length - offset);
++                if (read < 0) break;
++                offset += read;
++            }
++            if (offset != data.length) {
++                throw new IOException("Short read on " + file.getName());
++            }
++        }
++        return data;
++    }
++
++    private static void copyFile(File src, File dst) throws IOException {
++        File parent = dst.getParentFile();
++        if (parent != null && !parent.exists()) parent.mkdirs();
++        try (FileInputStream in = new FileInputStream(src);
++             FileOutputStream out = new FileOutputStream(dst)) {
++            byte[] buf = new byte[16384];
++            int n;
++            while ((n = in.read(buf)) > 0) {
++                out.write(buf, 0, n);
++            }
++            out.getFD().sync();
++        }
++    }
 +
 +    public static boolean isStudioCallbackUri(String raw) {
 +        if (raw == null) return false;
@@ -1043,44 +2863,6 @@ index 0000000..23cb2c0
 +        File batFile = new File(base, "studio-auth.bat");
 +        DeploymentFiles.write(batFile, buildAuthBatchScript(dosExePath, callbackUri));
 +        return batFile;
-+    }
-+
-+    public static void configureWineRegistry(Container container) {
-+        if (container == null) return;
-+        try {
-+            File rootDir = container.getRootDir();
-+            File exe = StudioDeployment.currentExecutable(rootDir);
-+            if (exe == null) return;
-+            File marker = new File(StudioDeployment.base(rootDir), "current-version.txt");
-+            if (!marker.isFile()) return;
-+            String version = DeploymentFiles.read(marker).trim();
-+            String dosExePath = WineUtils.unixToDOSPath(exe.getAbsolutePath(), container);
-+            File base = StudioDeployment.base(rootDir);
-+            DeploymentFiles.mkdir(base);
-+            DeploymentFiles.write(new File(base, "studio-protocol.reg"), buildProtocolRegContent(dosExePath, version));
-+
-+            String command = "\"" + dosExePath + "\" \"%1\"";
-+            String icon = dosExePath + ",0";
-+            for (String regName : new String[]{".wine/user.reg", ".wine/system.reg"}) {
-+                File regFile = new File(rootDir, regName);
-+                try (WineRegistryEditor editor = new WineRegistryEditor(regFile)) {
-+                    editor.setStringValue("Software\\Classes\\roblox-studio", null, "URL: Roblox Protocol");
-+                    editor.setStringValue("Software\\Classes\\roblox-studio", "URL Protocol", "");
-+                    editor.setStringValue("Software\\Classes\\roblox-studio\\DefaultIcon", null, icon);
-+                    editor.setStringValue("Software\\Classes\\roblox-studio\\shell\\open\\command", null, command);
-+
-+                    editor.setStringValue("Software\\Classes\\roblox-studio-auth", null, "URL: Roblox Studio Auth Protocol");
-+                    editor.setStringValue("Software\\Classes\\roblox-studio-auth", "URL Protocol", "");
-+                    editor.setStringValue("Software\\Classes\\roblox-studio-auth\\DefaultIcon", null, icon);
-+                    editor.setStringValue("Software\\Classes\\roblox-studio-auth\\shell\\open\\command", null, command);
-+
-+                    editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio", "version", version);
-+                    editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio", "clientExePath", dosExePath);
-+                    editor.setStringValue("Software\\ROBLOX Corporation\\Environments\\RobloxStudio\\Channel", "www.roblox.com", "LIVE");
-+                    editor.setStringValue("Software\\Wine\\WineBrowser", "Browsers", "C:\\windows\\winhandler.exe /url");
-+                }
-+            }
-+        } catch (Exception ignored) {}
 +    }
 +
 +    public static void markAwaitingExternalAuth() {
@@ -1279,19 +3061,26 @@ index 0000000..23cb2c0
 +        final Dialog dialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
 +        LinearLayout root = new LinearLayout(activity);
 +        root.setOrientation(LinearLayout.VERTICAL);
-+        root.setBackgroundColor(0xff18181b);
++        root.setBackgroundColor(0xff080b11);
 +
 +        LinearLayout header = new LinearLayout(activity);
 +        header.setOrientation(LinearLayout.HORIZONTAL);
 +        header.setGravity(Gravity.CENTER_VERTICAL);
-+        header.setBackgroundColor(0xff242429);
-+        int pad = dp(activity, 8);
-+        header.setPadding(pad, dp(activity, 4), pad, dp(activity, 4));
++        GradientDrawable headerBg = new GradientDrawable(
++                GradientDrawable.Orientation.LEFT_RIGHT,
++                new int[]{0xff0d131f, 0xff131c2e}
++        );
++        headerBg.setStroke(dp(activity, 1), 0xff26354d);
++        header.setBackground(headerBg);
++        int pad = dp(activity, 10);
++        header.setPadding(pad, dp(activity, 6), pad, dp(activity, 6));
 +
 +        TextView title = new TextView(activity);
-+        title.setText("Studio Sign-In (In-App Bridge)");
-+        title.setTextColor(Color.WHITE);
-+        title.setTextSize(14);
++        title.setText("ROBLOX STUDIO // OAUTH BRIDGE");
++        title.setTextColor(0xfff1f5f9);
++        title.setTextSize(13);
++        title.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
++        title.setLetterSpacing(0.06f);
 +        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 +        header.addView(title, titleLp);
 +
@@ -1301,16 +3090,16 @@ index 0000000..23cb2c0
 +        final WebView webView = new WebView(activity);
 +        activeWebView = webView;
 +
-+        Button browserBtn = headerButton(activity, "External Browser", () -> {
++        Button browserBtn = headerButton(activity, "EXTERNAL BROWSER", 0xff162238, 0xff3b82f6, () -> {
 +            String current = webView.getUrl();
 +            openExternalBrowser(activity, (current != null && current.startsWith("http")) ? current : startUrl);
 +        });
 +        header.addView(browserBtn);
 +
-+        Button pasteBtn = headerButton(activity, "Paste URI", () -> completeFromClipboard(activity));
++        Button pasteBtn = headerButton(activity, "PASTE URI", 0xff122032, 0xff38bdf8, () -> completeFromClipboard(activity));
 +        header.addView(pasteBtn);
 +
-+        Button closeBtn = headerButton(activity, "Close", StudioLoginBridge::dismissActiveLoginDialog);
++        Button closeBtn = headerButton(activity, "CLOSE", 0xff28131a, 0xfff43f5e, StudioLoginBridge::dismissActiveLoginDialog);
 +        header.addView(closeBtn);
 +
 +        root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1401,13 +3190,35 @@ index 0000000..23cb2c0
 +        }
 +    }
 +
-+    private static Button headerButton(Context context, String label, Runnable action) {
++    private static Button headerButton(Context context, String label, int bgColor, int strokeColor, Runnable action) {
 +        Button b = new Button(context);
 +        b.setText(label);
 +        b.setAllCaps(false);
-+        b.setTextSize(12);
++        b.setTextSize(11);
++        b.setTextColor(Color.WHITE);
++        b.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
++        b.setLetterSpacing(0.04f);
++        b.setPadding(dp(context, 12), 0, dp(context, 12), 0);
++
++        GradientDrawable outer = new GradientDrawable();
++        outer.setShape(GradientDrawable.RECTANGLE);
++        outer.setCornerRadius(0f);
++        outer.setColor(bgColor);
++        outer.setStroke(dp(context, 1), strokeColor);
++
++        GradientDrawable inner = new GradientDrawable();
++        inner.setShape(GradientDrawable.RECTANGLE);
++        inner.setCornerRadius(0f);
++        inner.setColor(Color.TRANSPARENT);
++        inner.setStroke(dp(context, 1), 0x44ffffff);
++
++        LayerDrawable layered = new LayerDrawable(new android.graphics.drawable.Drawable[]{outer, inner});
++        int inset = dp(context, 3);
++        layered.setLayerInset(1, inset, inset, inset, inset);
++        b.setBackground(layered);
++
 +        b.setOnClickListener(v -> action.run());
-+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(context, 40));
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(context, 36));
 +        lp.leftMargin = dp(context, 6);
 +        b.setLayoutParams(lp);
 +        return b;
@@ -1419,60 +3230,268 @@ index 0000000..23cb2c0
 +}
 diff --git a/app/src/main/java/com/winlator/studiobridge/StudioTouchBar.java b/app/src/main/java/com/winlator/studiobridge/StudioTouchBar.java
 new file mode 100644
-index 0000000..3321ac5
+index 0000000..bd81837
 --- /dev/null
 +++ b/app/src/main/java/com/winlator/studiobridge/StudioTouchBar.java
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,259 @@
 +/* Studio Bridge additions, 2026. LGPL-2.1-or-later. */
 +package com.winlator.studiobridge;
 +
-+import androidx.appcompat.app.AppCompatActivity;
++import android.graphics.Color;
++import android.graphics.Typeface;
++import android.graphics.drawable.Drawable;
++import android.graphics.drawable.GradientDrawable;
++import android.graphics.drawable.LayerDrawable;
++import android.view.Gravity;
 +import android.view.MotionEvent;
-+import android.widget.*;
-+import android.view.View;
-+import com.winlator.core.AppUtils;
-+import com.winlator.xserver.*;
-+import java.util.*;
++import android.widget.Button;
++import android.widget.HorizontalScrollView;
++import android.widget.LinearLayout;
 +
-+/** Large touch targets; key-up and mouse-up on cancellation, pause, or detach. */
++import androidx.appcompat.app.AppCompatActivity;
++
++import com.winlator.XServerDisplayActivity;
++import com.winlator.core.AppUtils;
++import com.winlator.xserver.Pointer;
++import com.winlator.xserver.XKeycode;
++import com.winlator.xserver.XServer;
++
++import java.util.EnumSet;
++import java.util.Set;
++
++/**
++ * Sharp-edged, double-stroke professional Studio command bar with key-up and mouse-up safety on pause/detach.
++ */
 +public final class StudioTouchBar extends HorizontalScrollView {
++    private static final int STYLE_ACCENT = 0;
++    private static final int STYLE_STANDARD = 1;
++    private static final int STYLE_PLAY = 2;
++    private static final int STYLE_HOLD = 3;
++    private static final int STYLE_DANGER = 4;
++
 +    private final XServer server;
-+    private final Set<XKeycode> held=EnumSet.noneOf(XKeycode.class);
++    private final Set<XKeycode> held = EnumSet.noneOf(XKeycode.class);
 +    private boolean rightMouse;
 +    private final LinearLayout row;
-+    public StudioTouchBar(AppCompatActivity activity,XServer server) {
-+        super(activity);this.server=server;setBackgroundColor(0xff202020);setHorizontalScrollBarEnabled(true);setFillViewport(false);
-+        row=new LinearLayout(activity);row.setPadding(dp(4),0,dp(4),0);addView(row);
-+        action("Unofficial",()->new androidx.appcompat.app.AlertDialog.Builder(activity).setTitle("Experimental fan-made project").setMessage(StudioHubActivity.DISCLAIMER).setPositiveButton("Close",null).show());
-+        action("Login",()->{if(activity instanceof com.winlator.XServerDisplayActivity)StudioLoginBridge.showLoginBridgeMenu((com.winlator.XServerDisplayActivity)activity);});
-+        action("Keyboard",()->AppUtils.showKeyboard(activity));
-+        chord("Undo",XKeycode.KEY_CTRL_L,XKeycode.KEY_Z);
-+        chord("Redo",XKeycode.KEY_CTRL_L,XKeycode.KEY_Y);
-+        chord("Save",XKeycode.KEY_CTRL_L,XKeycode.KEY_S);
-+        chord("Esc",XKeycode.KEY_ESC);chord("Play F5",XKeycode.KEY_F5);chord("Focus F",XKeycode.KEY_F);
-+        hold("W ↑",XKeycode.KEY_W);hold("A ←",XKeycode.KEY_A);hold("S ↓",XKeycode.KEY_S);hold("D →",XKeycode.KEY_D);
-+        Button look=button("Look · hold");
-+        look.setOnTouchListener((v,e)->{
-+            if(e.getActionMasked()==MotionEvent.ACTION_DOWN){v.getParent().requestDisallowInterceptTouchEvent(true);rightMouse=true;server.injectPointerButtonPress(Pointer.Button.BUTTON_RIGHT);v.setPressed(true);return true;}
-+            if(e.getActionMasked()==MotionEvent.ACTION_UP || e.getActionMasked()==MotionEvent.ACTION_CANCEL){if(rightMouse)server.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT);rightMouse=false;v.setPressed(false);v.performClick();v.getParent().requestDisallowInterceptTouchEvent(false);return true;}
++
++    public StudioTouchBar(AppCompatActivity activity, XServer server) {
++        super(activity);
++        this.server = server;
++        setHorizontalScrollBarEnabled(false);
++        setFillViewport(false);
++
++        GradientDrawable barBg = new GradientDrawable(
++                GradientDrawable.Orientation.LEFT_RIGHT,
++                new int[]{0xff070a10, 0xff0f1726, 0xff090d16}
++        );
++        barBg.setStroke(dp(1), 0xff223049);
++        setBackground(barBg);
++
++        row = new LinearLayout(activity);
++        row.setGravity(Gravity.CENTER_VERTICAL);
++        row.setPadding(dp(6), dp(4), dp(6), dp(4));
++        addView(row);
++
++        action("LOGIN", STYLE_ACCENT, () -> {
++            if (activity instanceof XServerDisplayActivity) {
++                StudioLoginBridge.showLoginBridgeMenu((XServerDisplayActivity) activity);
++            }
++        });
++        action("KEYBOARD", STYLE_STANDARD, () -> AppUtils.showKeyboard(activity));
++        chord("PLAY F5", STYLE_PLAY, XKeycode.KEY_F5);
++        chord("UNDO", STYLE_STANDARD, XKeycode.KEY_CTRL_L, XKeycode.KEY_Z);
++        chord("REDO", STYLE_STANDARD, XKeycode.KEY_CTRL_L, XKeycode.KEY_Y);
++        chord("SAVE", STYLE_STANDARD, XKeycode.KEY_CTRL_L, XKeycode.KEY_S);
++        chord("FOCUS F", STYLE_STANDARD, XKeycode.KEY_F);
++        chord("ESC", STYLE_STANDARD, XKeycode.KEY_ESC);
++
++        hold("W ↑", XKeycode.KEY_W);
++        hold("A ←", XKeycode.KEY_A);
++        hold("S ↓", XKeycode.KEY_S);
++        hold("D →", XKeycode.KEY_D);
++
++        Button look = button("LOOK · HOLD", STYLE_HOLD);
++        look.setOnTouchListener((v, e) -> {
++            if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
++                v.getParent().requestDisallowInterceptTouchEvent(true);
++                rightMouse = true;
++                server.injectPointerButtonPress(Pointer.Button.BUTTON_RIGHT);
++                v.setPressed(true);
++                applyButtonFill(look, STYLE_HOLD, true);
++                return true;
++            }
++            if (e.getActionMasked() == MotionEvent.ACTION_UP || e.getActionMasked() == MotionEvent.ACTION_CANCEL) {
++                if (rightMouse) server.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT);
++                rightMouse = false;
++                v.setPressed(false);
++                applyButtonFill(look, STYLE_HOLD, false);
++                v.performClick();
++                v.getParent().requestDisallowInterceptTouchEvent(false);
++                return true;
++            }
++            return true;
++        });
++
++        action("WINDOWS", STYLE_STANDARD, () -> {
++            if (activity instanceof XServerDisplayActivity) {
++                ((XServerDisplayActivity) activity).showActiveWindows();
++            }
++        });
++        action("LOGS", STYLE_STANDARD, () -> {
++            if (activity instanceof XServerDisplayActivity) {
++                ((XServerDisplayActivity) activity).showDebugLogs();
++            }
++        });
++        action("HUB / EXIT", STYLE_DANGER, () -> {
++            if (activity instanceof XServerDisplayActivity) {
++                ((XServerDisplayActivity) activity).exit();
++            } else {
++                activity.finish();
++            }
++        });
++    }
++
++    private void action(String label, int style, Runnable action) {
++        Button b = button(label, style);
++        b.setOnClickListener(v -> action.run());
++    }
++
++    private void chord(String label, int style, XKeycode... keys) {
++        action(label, style, () -> {
++            for (XKeycode k : keys) if (held.contains(k)) return;
++            for (XKeycode k : keys) {
++                held.add(k);
++                server.injectKeyPress(k);
++            }
++            postDelayed(() -> {
++                for (int i = keys.length - 1; i >= 0; i--) {
++                    if (held.remove(keys[i])) server.injectKeyRelease(keys[i]);
++                }
++            }, 80);
++        });
++    }
++
++    private void hold(String label, XKeycode key) {
++        Button b = button(label, STYLE_HOLD);
++        b.setOnTouchListener((v, e) -> {
++            if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
++                v.getParent().requestDisallowInterceptTouchEvent(true);
++                held.add(key);
++                server.injectKeyPress(key);
++                v.setPressed(true);
++                applyButtonFill(b, STYLE_HOLD, true);
++                return true;
++            }
++            if (e.getActionMasked() == MotionEvent.ACTION_UP || e.getActionMasked() == MotionEvent.ACTION_CANCEL) {
++                if (held.remove(key)) server.injectKeyRelease(key);
++                v.setPressed(false);
++                applyButtonFill(b, STYLE_HOLD, false);
++                v.performClick();
++                v.getParent().requestDisallowInterceptTouchEvent(false);
++                return true;
++            }
 +            return true;
 +        });
 +    }
-+    private void action(String label,Runnable action){button(label).setOnClickListener(v->action.run());}
-+    private void chord(String label,XKeycode... keys){action(label,()->{
-+        for(XKeycode k:keys)if(held.contains(k))return;
-+        for(XKeycode k:keys){held.add(k);server.injectKeyPress(k);}
-+        postDelayed(()->{for(int i=keys.length-1;i>=0;i--)if(held.remove(keys[i]))server.injectKeyRelease(keys[i]);},80);
-+    });}
-+    private void hold(String label,XKeycode key){Button b=button(label);b.setOnTouchListener((v,e)->{
-+        if(e.getActionMasked()==MotionEvent.ACTION_DOWN){v.getParent().requestDisallowInterceptTouchEvent(true);held.add(key);server.injectKeyPress(key);v.setPressed(true);return true;}
-+        if(e.getActionMasked()==MotionEvent.ACTION_UP || e.getActionMasked()==MotionEvent.ACTION_CANCEL){if(held.remove(key))server.injectKeyRelease(key);v.setPressed(false);v.performClick();v.getParent().requestDisallowInterceptTouchEvent(false);return true;}
-+        return true;
-+    });}
-+    public void releaseAll(){for(XKeycode k:held)server.injectKeyRelease(k);held.clear();if(rightMouse){server.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT);rightMouse=false;}}
-+    @Override protected void onDetachedFromWindow(){releaseAll();super.onDetachedFromWindow();}
-+    private Button button(String text){Button b=new Button(getContext());b.setText(text);b.setAllCaps(false);b.setTextSize(14);b.setContentDescription(text);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(52));lp.setMargins(dp(2),dp(4),dp(2),dp(4));row.addView(b,lp);return b;}
-+    private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
++
++    public void releaseAll() {
++        for (XKeycode k : held) server.injectKeyRelease(k);
++        held.clear();
++        if (rightMouse) {
++            server.injectPointerButtonRelease(Pointer.Button.BUTTON_RIGHT);
++            rightMouse = false;
++        }
++    }
++
++    @Override
++    protected void onDetachedFromWindow() {
++        releaseAll();
++        super.onDetachedFromWindow();
++    }
++
++    private Button button(String text, int style) {
++        Button b = new Button(getContext());
++        b.setText(text);
++        b.setAllCaps(false);
++        b.setTextSize(11.5f);
++        b.setTextColor(0xfff1f5f9);
++        b.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
++        b.setLetterSpacing(0.05f);
++        b.setContentDescription(text);
++        b.setPadding(dp(12), 0, dp(12), 0);
++        b.setMinimumWidth(dp(64));
++        b.setMinWidth(dp(64));
++        applyButtonFill(b, style, false);
++
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(48));
++        lp.setMargins(dp(3), dp(2), dp(3), dp(2));
++        row.addView(b, lp);
++        return b;
++    }
++
++    private void applyButtonFill(Button b, int style, boolean active) {
++        int topColor;
++        int bottomColor;
++        int outerStroke;
++        int innerStroke;
++
++        switch (style) {
++            case STYLE_ACCENT:
++                topColor = active ? 0xff1d4ed8 : 0xff152c5b;
++                bottomColor = active ? 0xff1e3a8a : 0xff0d1b3a;
++                outerStroke = 0xff3b82f6;
++                innerStroke = 0x667dd3fc;
++                break;
++            case STYLE_PLAY:
++                topColor = active ? 0xff059669 : 0xff0f392b;
++                bottomColor = active ? 0xff065f46 : 0xff09221a;
++                outerStroke = 0xff10b981;
++                innerStroke = 0x666ee7b7;
++                break;
++            case STYLE_HOLD:
++                topColor = active ? 0xff1e3a8a : 0xff131c2e;
++                bottomColor = active ? 0xff172554 : 0xff0b111d;
++                outerStroke = active ? 0xff38bdf8 : 0xff334155;
++                innerStroke = active ? 0x88bae6fd : 0x3894a3b8;
++                break;
++            case STYLE_DANGER:
++                topColor = active ? 0xff9f1239 : 0xff31101d;
++                bottomColor = active ? 0xff881337 : 0xff1c0911;
++                outerStroke = 0xfff43f5e;
++                innerStroke = 0x55fda4af;
++                break;
++            case STYLE_STANDARD:
++            default:
++                topColor = active ? 0xff1e293b : 0xff141d2b;
++                bottomColor = active ? 0xff0f172a : 0xff0c121c;
++                outerStroke = 0xff3b4c66;
++                innerStroke = 0x40cbd5e1;
++                break;
++        }
++
++        GradientDrawable outer = new GradientDrawable(
++                GradientDrawable.Orientation.TOP_BOTTOM,
++                new int[]{topColor, bottomColor}
++        );
++        outer.setShape(GradientDrawable.RECTANGLE);
++        outer.setCornerRadius(0f);
++        outer.setStroke(dp(1), outerStroke);
++
++        GradientDrawable inner = new GradientDrawable();
++        inner.setShape(GradientDrawable.RECTANGLE);
++        inner.setCornerRadius(0f);
++        inner.setColor(Color.TRANSPARENT);
++        inner.setStroke(dp(1), innerStroke);
++
++        LayerDrawable layered = new LayerDrawable(new Drawable[]{outer, inner});
++        int inset = dp(3);
++        layered.setLayerInset(1, inset, inset, inset, inset);
++        b.setBackground(layered);
++    }
++
++    private int dp(int n) {
++        return Math.round(n * getResources().getDisplayMetrics().density);
++    }
 +}
 diff --git a/app/src/main/java/com/winlator/winhandler/WinHandler.java b/app/src/main/java/com/winlator/winhandler/WinHandler.java
 index 3318b9f..ebf79f9 100644
@@ -1490,6 +3509,54 @@ index 3318b9f..ebf79f9 100644
                  break;
              }
              case RequestCodes.MIDI_OPEN: {
+diff --git a/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java b/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
+index 08fbf80..048d10a 100644
+--- a/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
++++ b/app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
+@@ -44,7 +44,11 @@ public abstract class RootFSInstaller {
+         }
+     }
+ 
+-    public static void install(final MainActivity activity) {
++    public static void install(final AppCompatActivity activity) {
++        install(activity, null);
++    }
++
++    public static void install(final AppCompatActivity activity, final Runnable onComplete) {
+         AppUtils.keepScreenOn(activity);
+         RootFS rootFS = RootFS.find(activity);
+         final File rootDir = rootFS.getRootDir();
+@@ -68,18 +72,28 @@ public abstract class RootFSInstaller {
+             });
+ 
+             if (success) {
++                com.winlator.studiobridge.StudioLoginBridge.patchRootFSKernelbase(rootDir);
+                 rootFS.createRFSVersionFile(LATEST_VERSION);
+                 resetContainerRFSVersions(activity);
+             }
+             else AppUtils.showToast(activity, R.string.unable_to_install_system_files);
+ 
+             dialog.closeOnUiThread();
++            if (onComplete != null) activity.runOnUiThread(onComplete);
+         });
+     }
+ 
+-    public static void installIfNeeded(final MainActivity activity) {
++    public static void installIfNeeded(final AppCompatActivity activity) {
++        installIfNeeded(activity, null);
++    }
++
++    public static void installIfNeeded(final AppCompatActivity activity, final Runnable onComplete) {
+         RootFS rootFS = RootFS.find(activity);
+-        if (!rootFS.isValid() || rootFS.getVersion() < LATEST_VERSION) install(activity);
++        if (!rootFS.isValid() || rootFS.getVersion() < LATEST_VERSION) {
++            install(activity, onComplete);
++        } else if (onComplete != null) {
++            onComplete.run();
++        }
+     }
+ 
+     private static void clearOptDir(File optDir) {
 diff --git a/app/src/main/res/values-pt/strings.xml b/app/src/main/res/values-pt/strings.xml
 index e2d342c..0f448cc 100644
 --- a/app/src/main/res/values-pt/strings.xml
@@ -1620,10 +3687,10 @@ index 0000000..b67d32b
 +}
 diff --git a/tests/studiobridge/StudioLoginBridgeTest.java b/tests/studiobridge/StudioLoginBridgeTest.java
 new file mode 100644
-index 0000000..1cfa31f
+index 0000000..77a33b2
 --- /dev/null
 +++ b/tests/studiobridge/StudioLoginBridgeTest.java
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,103 @@
 +package com.winlator.studiobridge;
 +
 +import java.io.File;
@@ -1696,6 +3763,30 @@ index 0000000..1cfa31f
 +            String regText = DeploymentFiles.read(reg);
 +            good(regText.contains("[HKEY_CURRENT_USER\\Software\\Classes\\roblox-studio-auth\\shell\\open\\command]"), "reg defines roblox-studio-auth command");
 +            good(regText.contains("winhandler.exe /url"), "reg configures WineBrowser to winhandler.exe /url");
++
++            String d3d11Json = StudioLoginBridge.buildClientAppSettingsJson("D3D11");
++            good(d3d11Json.contains("\"FFlagDebugGraphicsPreferD3D11\": true")
++                    && d3d11Json.contains("\"FFlagDebugGraphicsDisableVulkan\": true"),
++                    "generates D3D11 ClientAppSettings.json");
++
++            String vulkanJson = StudioLoginBridge.buildClientAppSettingsJson("Vulkan");
++            good(vulkanJson.contains("\"FFlagDebugGraphicsPreferVulkan\": true")
++                    && vulkanJson.contains("\"FFlagDebugGraphicsDisableD3D11\": true"),
++                    "generates Vulkan ClientAppSettings.json");
++
++            File kb64 = new File("/tmp/kernelbase.dll");
++            if (kb64.isFile()) {
++                byte[] pe64 = Files.readAllBytes(kb64.toPath());
++                good(StudioLoginBridge.patchKernelbaseBytes(pe64), "patches 64-bit kernelbase.dll with VirtualProtectFromApp");
++                good(!StudioLoginBridge.patchKernelbaseBytes(pe64), "64-bit kernelbase.dll patch is idempotent");
++            }
++
++            File kb32 = new File("/tmp/kernelbase32.dll");
++            if (kb32.isFile()) {
++                byte[] pe32 = Files.readAllBytes(kb32.toPath());
++                good(StudioLoginBridge.patchKernelbaseBytes(pe32), "patches 32-bit kernelbase.dll with VirtualProtectFromApp");
++                good(!StudioLoginBridge.patchKernelbaseBytes(pe32), "32-bit kernelbase.dll patch is idempotent");
++            }
 +
 +            System.out.println("PASS: " + checks + " login bridge checks");
 +        } finally {
